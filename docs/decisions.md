@@ -138,3 +138,22 @@ para preservar continuidade entre sessões do Claude Code.
 - Claude Code lê `CLAUDE.md` automaticamente ao iniciar
 - Contexto fica no repo, independente de ferramenta ou sessão
 - Facilita onboarding de novos colaboradores
+
+---
+
+### DEC-009 — Ingestão SRAG: correções descobertas em execução
+
+**Problemas encontrados e resolvidos:**
+- DBFS público desabilitado no workspace — arquivos temporários devem usar
+  `/Volumes/ds_dev_db/dev_christian_van_bellen/landing/` em vez de `/tmp/`
+- Parquet de 2025/2026 tem tipos mistos (timestamp, decimal) — necessário
+  castear tudo para string após leitura antes de gravar no bronze
+- Tabela bronze deve ser criada com schema explícito (tudo string) antes
+  da primeira ingestão — `mergeSchema` não resolve conflito timestamp vs string
+- DELETE com predicado falha em tabela vazia no Spark Connect —
+  envolvido em try/except com log de aviso
+
+**Padrão consolidado para ingestão bronze:**
+- Ler parquet → castear tudo para string → selecionar colunas essenciais → gravar
+- Criar tabela com schema explícito antes da primeira carga
+- Usar `/Volumes/` para arquivos temporários
