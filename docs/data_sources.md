@@ -168,3 +168,14 @@ df = df.withColumn("semana_epidemiologica",
 
 Quando a coluna `SEM_NOT` já estiver disponível no SRAG, usá-la diretamente
 pois já está no calendário epidemiológico correto.
+
+---
+
+## Estrutura dos arquivos SRAG
+
+- Cada arquivo corresponde a um **ano epidemiológico**, não ano calendário
+- Datas transbordam entre arquivos por atraso de notificação (esperado)
+- 2023 e 2024 estão **congelados** — ingeridos uma vez
+- 2025 e 2026 são **bancos vivos** — reprocessados semanalmente
+- Sobreposição entre arquivos é esperada — **deduplicação obrigatória no silver**
+- Volumes aproximados: 2023=279k, 2024=268k, 2025=336k, 2026=25k (mar/2026)
