@@ -1,0 +1,12 @@
+catalog: ds_dev_db
+schema: dev_christian_van_bellen
+
+tables:
+  bronze_cnes: ds_dev_db.dev_christian_van_bellen.bronze_cnes
+  bronze_hospitais_leitos: ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
+  bronze_srag: ds_dev_db.dev_christian_van_bellen.bronze_srag
+  silver_capacity: ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_semana
+  silver_srag: ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
+  gold_features: ds_dev_db.dev_christian_van_bellen.gold_pressure_features
+  gold_scoring: ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
+  gold_monitoring: ds_dev_db.dev_christian_van_bellen.gold_pressure_monitoring
