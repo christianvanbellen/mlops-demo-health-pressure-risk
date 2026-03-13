@@ -86,7 +86,7 @@ def scrape_urls() -> dict:
 
 def baixar_arquivo(url: str, ano: int, fmt: str) -> str:
     """Baixa o arquivo para /tmp e retorna o caminho local."""
-    caminho = f"/tmp/srag_{ano}.{fmt}"
+    caminho = f"/Volumes/ds_dev_db/dev_christian_van_bellen/landing/srag_{ano}.{fmt}"
     print(f"  Baixando {ano} ({fmt}) de {url} ...")
     r = requests.get(url, timeout=300)
     r.raise_for_status()

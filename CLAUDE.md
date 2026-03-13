@@ -22,6 +22,9 @@ Tipo de problema: classificação binária supervisionada.
 | Formato de armazenamento | Delta Lake |
 | Experiment tracking | MLflow (nativo Databricks) |
 | Model registry | Unity Catalog (Models in Unity Catalog) |
+| Volume de landing | `/Volumes/ds_dev_db/dev_christian_van_bellen/landing/` |
+
+> DBFS público desabilitado no workspace — usar sempre Volumes para arquivos temporários.
 
 Exemplo de tabela completa: `ds_dev_db.dev_christian_van_bellen.bronze_srag`
 
