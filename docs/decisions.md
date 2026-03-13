@@ -157,3 +157,14 @@ para preservar continuidade entre sessões do Claude Code.
 - Ler parquet → castear tudo para string → selecionar colunas essenciais → gravar
 - Criar tabela com schema explícito antes da primeira carga
 - Usar `/Volumes/` para arquivos temporários
+
+---
+
+### DEC-010 — Ingestão Hospitais e Leitos: estrutura descoberta em execução
+
+- Anos 2023/2024: CSV direto, separador vírgula, sem `CO_IBGE`
+- Anos 2025/2026: ZIP contendo CSV único, separador ponto-e-vírgula, com `CO_IBGE`
+- 2022 removido do escopo — schema inconsistente (nomes de colunas com espaços) e fora do horizonte do projeto
+- `CO_IBGE` disponível apenas em 2025/2026 — join com `municipio_id` via nome nos anos anteriores
+- Dados organizados por competência mensal (`COMP=AAAAMM`) dentro de cada arquivo anual
+- Volumes aproximados: 2023=84k, 2024=85k, 2025=86k, 2026=7k (mar/2026)
