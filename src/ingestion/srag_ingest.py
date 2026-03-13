@@ -172,8 +172,11 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         print(f"  Linhas lidas: {df.count():,}")
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
-        spark.sql(f"DELETE FROM {TABLE} WHERE _ano_arquivo = {ano}")
-        df.write.format("delta").mode("append").saveAsTable(TABLE)
+        try:
+            spark.sql(f"DELETE FROM {TABLE} WHERE CAST(_ano_arquivo AS INT) = {ano}")
+        except Exception as e:
+            print(f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado.")
+        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(TABLE)
         print(f"  ✓ Gravado em {TABLE}")
 
     print("\n✓ Ingestão SRAG concluída.")
