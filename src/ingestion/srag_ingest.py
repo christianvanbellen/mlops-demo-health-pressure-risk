@@ -112,6 +112,9 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
     else:
         df = spark.read.parquet(caminho)
 
+    # casteia tudo para string — bronze é sempre string, igual ao CSV
+    df = df.select([F.col(c).cast("string").alias(c) for c in df.columns])
+
     # validação mínima — arquivo corrompido ou URL errada retornam poucos registros
     n_linhas = df.count()
     if n_linhas < MIN_LINHAS_VALIDAS:
