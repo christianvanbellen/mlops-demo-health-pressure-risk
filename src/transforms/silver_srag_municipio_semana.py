@@ -92,7 +92,7 @@ def _derivar_semana_e_competencia(df):
         F.date_add(
             F.to_date(
                 F.concat(F.col("_ano_arquivo").cast("string"), F.lit("-01-01")),
-                "yyyy-dd-MM",
+                "yyyy-MM-dd",
             ),
             (F.col("SEM_PRI").cast("integer") - 1) * 7,
         ),
