@@ -96,6 +96,24 @@ def _join_srag_capacity(srag, cap):
     return df
 
 
+def _filtrar_sem_hospital(df):
+    """
+    Remove município-semanas sem capacidade hospitalar cadastrada
+    (leitos_totais = 0 após o join com capacity).
+    Esses municípios não têm hospital próprio — casos SRAG registrados
+    provavelmente foram atendidos em outro município.
+    Mantê-los distorce o pressure_score e o percentil do target.
+    """
+    total = df.count()
+    sem_leitos = df.filter(F.col("leitos_totais") == 0).count()
+    print(f"\n── Filtro sem hospital ──")
+    print(f"  Removidos (leitos_totais = 0): {sem_leitos:,}  ({sem_leitos/total*100:.1f}%)")
+    print(f"  Municípios sem hospital: ~3,637 (23% do total)")
+    df = df.filter(F.col("leitos_totais") > 0)
+    print(f"  Mantidos: {df.count():,}")
+    return df
+
+
 def _lags_e_medias_moveis(df):
     """
     Lags de casos_srag e casos_obito, e médias móveis MA2/MA4.
@@ -308,6 +326,7 @@ def transformar(spark: SparkSession):
     print(f"  srag: {srag.count():,} linhas | cap: {cap.count():,} linhas")
 
     df = _join_srag_capacity(srag, cap)
+    df = _filtrar_sem_hospital(df)
     df = _lags_e_medias_moveis(df)
     df = _features_dinamica(df)
     df = _features_pressao_relativa(df)
