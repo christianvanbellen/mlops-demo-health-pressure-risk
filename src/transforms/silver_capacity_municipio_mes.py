@@ -47,6 +47,60 @@ COLUNAS_NUMERICAS = [
 
 
 # ── funções ─────────────────────────────────────────────────────
+def _resolver_municipio_id(df):
+    """
+    Preenche CO_IBGE nos anos 2023/2024 (onde a coluna é ausente na fonte)
+    via lookup construído a partir dos registros 2025/2026 (que têm CO_IBGE).
+
+    Estratégia:
+      lookup = registros com CO_IBGE não nulo
+               agrupados por upper(trim(MUNICIPIO)) → primeiro CO_IBGE distinto
+      Para registros com CO_IBGE nulo, join pelo nome normalizado do município.
+    """
+    nulos_antes = df.filter(F.col("CO_IBGE").isNull()).count()
+    print(f"\n── Resolução de municipio_id ──")
+    print(f"  Registros com CO_IBGE nulo antes do lookup: {nulos_antes:,}")
+
+    if nulos_antes == 0:
+        print(f"  Nenhum registro a resolver — pulando lookup.")
+        return df
+
+    # lookup: nome normalizado → CO_IBGE (apenas de registros com código já conhecido)
+    lookup = (
+        df.filter(F.col("CO_IBGE").isNotNull())
+        .select(
+            F.upper(F.trim(F.col("MUNICIPIO"))).alias("municipio_key"),
+            F.col("CO_IBGE").alias("_co_ibge_lookup"),
+        )
+        .dropDuplicates(["municipio_key"])
+    )
+
+    # adiciona chave normalizada ao df principal para o join
+    df = df.withColumn("_municipio_key", F.upper(F.trim(F.col("MUNICIPIO"))))
+
+    # join pelo nome normalizado com o lookup
+    df = df.join(
+        lookup.withColumnRenamed("municipio_key", "_municipio_key"),
+        on="_municipio_key",
+        how="left",
+    )
+
+    # preenche CO_IBGE onde era nulo com o valor encontrado no lookup
+    df = df.withColumn(
+        "CO_IBGE",
+        F.coalesce(F.col("CO_IBGE"), F.col("_co_ibge_lookup")),
+    ).drop("_municipio_key", "_co_ibge_lookup")
+
+    nulos_resolvidos = nulos_antes - df.filter(F.col("CO_IBGE").isNull()).count()
+    nulos_restantes  = df.filter(F.col("CO_IBGE").isNull()).count()
+    print(f"  Resolvidos pelo lookup: {nulos_resolvidos:,}")
+    if nulos_restantes:
+        print(f"  ⚠ Continuam nulos após lookup (município não encontrado): {nulos_restantes:,}")
+    else:
+        print(f"  ✓ Todos os registros resolvidos.")
+    return df
+
+
 def _cast_numerico(df):
     """
     Converte colunas numéricas de string para integer.
@@ -138,6 +192,7 @@ def transformar(spark: SparkSession):
     df = spark.table(TABLE_SRC)
     print(f"  Registros na bronze: {df.count():,}")
 
+    df = _resolver_municipio_id(df)
     df = _cast_numerico(df)
     df = _flag_hospital(df)
     df = _agregar(df)
