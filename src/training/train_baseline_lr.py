@@ -340,24 +340,22 @@ def _plot_decile_analysis(model, df, split_name: str):
     preds = model.transform(df)
     preds = preds.withColumn(
         "prob_positivo",
-        F.udf(lambda v: float(v[1]), "double")(F.col("probability")),
+        F.element_at(F.col("probability"), 2).cast("double"),
     )
 
     # passo 2: calcular quantis para definir os decis
     quantis = preds.approxQuantile("prob_positivo", [i / 10 for i in range(1, 11)], 0.01)
 
-    # passo 3: atribuir decil a cada registro
-    def _decil_col(quantis):
-        col = F.when(F.col("prob_positivo") <= quantis[0], F.lit(1))
-        for d in range(1, 9):
-            col = col.when(
-                (F.col("prob_positivo") > quantis[d - 1]) &
-                (F.col("prob_positivo") <= quantis[d]),
-                F.lit(d + 1),
-            )
-        return col.otherwise(F.lit(10))
-
-    preds = preds.withColumn("decil", _decil_col(quantis))
+    # passo 3: atribuir decil a cada registro via F.when encadeado corretamente
+    decil_expr = F.when(F.col("prob_positivo") <= quantis[0], F.lit(1))
+    for d in range(1, 9):
+        decil_expr = decil_expr.when(
+            (F.col("prob_positivo") > quantis[d - 1]) &
+            (F.col("prob_positivo") <= quantis[d]),
+            F.lit(d + 1),
+        )
+    decil_expr = decil_expr.otherwise(F.lit(10))
+    preds = preds.withColumn("decil", decil_expr)
 
     # passo 4: agregar por decil
     decil_df = (
