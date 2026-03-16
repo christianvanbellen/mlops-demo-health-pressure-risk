@@ -28,6 +28,13 @@ from databricks.feature_engineering import FeatureEngineeringClient
 import mlflow
 import mlflow.spark
 from mlflow.models.signature import infer_signature
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import numpy as np
+import pandas as pd
+from sklearn.metrics import roc_curve, precision_recall_curve
+import tempfile
+import os
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
@@ -147,6 +154,265 @@ def _avaliar(predictions, split_name: str) -> dict:
     }
 
 
+def _log_model_summary(model, train):
+    """
+    Extrai coeficientes da LR, ordena por valor absoluto e salva como
+    model_summary.txt para leitura fácil no MLflow UI.
+    """
+    lr_model   = model.stages[-1]
+    coefs      = lr_model.coefficients.toArray()
+    intercept  = lr_model.intercept
+
+    coef_pairs = sorted(zip(FEATURE_COLS, coefs), key=lambda x: abs(x[1]), reverse=True)
+
+    total     = train.count()
+    positivos = train.filter(F.col(TARGET_COL) == 1.0).count()
+
+    lines = [
+        "=== MODEL SUMMARY — Logistic Regression Baseline ===",
+        "",
+        f"Intercept: {intercept:.6f}",
+        "",
+        "Coefficients (sorted by absolute value):",
+        f"{'Feature':<32} {'Coefficient':>12}",
+        "─" * 46,
+    ]
+    for feat, coef in coef_pairs:
+        sinal = "+" if coef >= 0 else ""
+        lines.append(f"{feat:<32} {sinal}{coef:.6f}")
+
+    lines += [
+        "",
+        "Hyperparameters:",
+        f"  regParam        : 0.01",
+        f"  elasticNetParam : 0.0",
+        f"  maxIter         : 100",
+        "",
+        f"Training set size: {total:,}",
+        f"Positive rate:     {positivos/total*100:.1f}%",
+    ]
+
+    tmpdir = tempfile.mkdtemp()
+    path   = os.path.join(tmpdir, "model_summary.txt")
+    with open(path, "w") as f:
+        f.write("\n".join(lines))
+    mlflow.log_artifact(path)
+    os.remove(path)
+    print("  ✓ model_summary.txt logado")
+
+
+def _plot_roc_pr_curves(model, train, val, test):
+    """
+    Gera figura com ROC Curve e Precision-Recall Curve para os três splits.
+    """
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    splits = [
+        ("train", train, "steelblue",   "--"),
+        ("val",   val,   "darkorange",  "-"),
+        ("test",  test,  "forestgreen", "-"),
+    ]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # prevalência para baseline de PR
+    total_labels = np.array(
+        train.select(TARGET_COL).rdd.map(lambda r: float(r[0])).collect()
+    )
+    prevalencia = total_labels.mean()
+
+    for split_name, split_df, color, ls in splits:
+        preds  = model.transform(split_df)
+        probs  = np.array(preds.select("probability").rdd.map(lambda r: float(r[0][1])).collect())
+        labels = np.array(preds.select(TARGET_COL).rdd.map(lambda r: float(r[0])).collect())
+
+        # ROC
+        fpr, tpr, _ = roc_curve(labels, probs)
+        auc_roc     = np.trapz(tpr, fpr)
+        ax1.plot(fpr, tpr, color=color, linestyle=ls, linewidth=2,
+                 label=f"{split_name.capitalize()} (AUC={auc_roc:.3f})")
+
+        # PR
+        prec, rec, _ = precision_recall_curve(labels, probs)
+        auc_pr       = np.trapz(prec, rec[::-1])
+        ax2.plot(rec, prec, color=color, linestyle=ls, linewidth=2,
+                 label=f"{split_name.capitalize()} (AUC-PR={auc_pr:.3f})")
+
+    # ROC — diagonal de referência
+    ax1.plot([0, 1], [0, 1], color="grey", linestyle="--", linewidth=1, alpha=0.6)
+    ax1.set_title("ROC Curve — LR Baseline", fontsize=13, fontweight="bold")
+    ax1.set_xlabel("False Positive Rate", fontsize=10)
+    ax1.set_ylabel("True Positive Rate", fontsize=10)
+    ax1.legend(fontsize=9)
+    ax1.set_xlim([0, 1])
+    ax1.set_ylim([0, 1.02])
+
+    # PR — baseline de prevalência
+    ax2.axhline(y=prevalencia, color="red", linestyle="--", linewidth=1, alpha=0.7,
+                label=f"Baseline (prevalência={prevalencia:.2f})")
+    ax2.set_title("Precision-Recall Curve — LR Baseline", fontsize=13, fontweight="bold")
+    ax2.set_xlabel("Recall", fontsize=10)
+    ax2.set_ylabel("Precision", fontsize=10)
+    ax2.legend(fontsize=9)
+    ax2.set_xlim([0, 1])
+    ax2.set_ylim([0, 1.02])
+
+    tmpdir = tempfile.mkdtemp()
+    path   = os.path.join(tmpdir, "roc_pr_curves.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    mlflow.log_artifact(path)
+    os.remove(path)
+    print("  ✓ roc_pr_curves.png logado")
+
+
+def _plot_target_incidence_timeline(df):
+    """
+    Incidência do target ao longo das competências com faixas de train/val/test.
+    """
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    # agrega por competencia
+    incidencia = (
+        df.groupBy("competencia")
+        .agg(F.round(F.avg(TARGET_COL) * 100, 2).alias("pct_positivos"))
+        .orderBy("competencia")
+        .toPandas()
+    )
+    comps = incidencia["competencia"].tolist()
+    pcts  = incidencia["pct_positivos"].tolist()
+    x     = range(len(comps))
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    # faixas de fundo
+    train_mask = [i for i, c in enumerate(comps) if c <= TRAIN_END]
+    val_mask   = [i for i, c in enumerate(comps) if TRAIN_END < c <= VAL_END]
+    test_mask  = [i for i, c in enumerate(comps) if c > VAL_END]
+
+    for mask, color, label in [
+        (train_mask, "steelblue",   "Train"),
+        (val_mask,   "darkorange",  "Val"),
+        (test_mask,  "forestgreen", "Test"),
+    ]:
+        if mask:
+            ax.axvspan(mask[0] - 0.5, mask[-1] + 0.5, alpha=0.1, color=color, label=label)
+            mid = (mask[0] + mask[-1]) / 2
+            ax.annotate(label, xy=(mid, 27), ha="center", fontsize=9,
+                        color=color, fontweight="bold")
+
+    # série temporal
+    ax.plot(x, pcts, color="steelblue", linewidth=2, marker="o", markersize=4)
+
+    # linha de referência dos 15%
+    ax.axhline(y=15, color="red", linestyle="--", linewidth=1.2, alpha=0.8,
+               label="Referência 15%")
+
+    # labels do eixo x — só o primeiro mês de cada ano
+    tick_pos    = [i for i, c in enumerate(comps) if c.endswith("01")]
+    tick_labels = [f"{c[:4]}-01" for c in comps if c.endswith("01")]
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels(tick_labels, fontsize=9, rotation=30)
+
+    ax.set_ylim(0, 30)
+    ax.set_xlabel("Competência", fontsize=10)
+    ax.set_ylabel("% Municípios em Alta Pressão", fontsize=10)
+    ax.set_title("Target Incidence by Competencia", fontsize=13, fontweight="bold")
+    ax.legend(fontsize=9, loc="upper left")
+
+    tmpdir = tempfile.mkdtemp()
+    path   = os.path.join(tmpdir, "target_incidence_timeline.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    mlflow.log_artifact(path)
+    os.remove(path)
+    print("  ✓ target_incidence_timeline.png logado")
+
+
+def _plot_decile_analysis(model, df, split_name: str):
+    """
+    Divide scores de probabilidade em 10 decis e plota incidência do target
+    e volume de registros por decil.
+    """
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    # passo 1: obter predictions com prob_positivo como coluna double
+    preds = model.transform(df)
+    preds = preds.withColumn(
+        "prob_positivo",
+        F.udf(lambda v: float(v[1]), "double")(F.col("probability")),
+    )
+
+    # passo 2: calcular quantis para definir os decis
+    quantis = preds.approxQuantile("prob_positivo", [i / 10 for i in range(1, 11)], 0.01)
+
+    # passo 3: atribuir decil a cada registro
+    def _decil_col(quantis):
+        col = F.when(F.col("prob_positivo") <= quantis[0], F.lit(1))
+        for d in range(1, 9):
+            col = col.when(
+                (F.col("prob_positivo") > quantis[d - 1]) &
+                (F.col("prob_positivo") <= quantis[d]),
+                F.lit(d + 1),
+            )
+        return col.otherwise(F.lit(10))
+
+    preds = preds.withColumn("decil", _decil_col(quantis))
+
+    # passo 4: agregar por decil
+    decil_df = (
+        preds.groupBy("decil")
+        .agg(
+            F.count("*")                                    .alias("n"),
+            F.sum(TARGET_COL)                               .alias("positivos"),
+            F.round(F.avg(TARGET_COL) * 100, 2)            .alias("pct_positivos"),
+            F.round(F.avg("prob_positivo") * 100, 2)        .alias("score_medio"),
+        )
+        .orderBy("decil")
+        .toPandas()
+    )
+
+    decis      = decil_df["decil"].tolist()
+    pcts       = decil_df["pct_positivos"].tolist()
+    volumes    = decil_df["n"].tolist()
+    prevalencia = preds.filter(F.col(TARGET_COL) == 1.0).count() / preds.count() * 100
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # subplot 1 — incidência por decil
+    bars1 = ax1.bar(decis, pcts, color="steelblue", edgecolor="white", linewidth=0.5)
+    ax1.axhline(y=prevalencia, color="red", linestyle="--", linewidth=1.2,
+                label=f"Prevalência ({prevalencia:.1f}%)")
+    for bar, pct in zip(bars1, pcts):
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                 f"{pct:.1f}%", ha="center", va="bottom", fontsize=8)
+    ax1.set_title(f"Target Incidence by Score Decile [{split_name}]",
+                  fontsize=13, fontweight="bold")
+    ax1.set_xlabel("Decil", fontsize=10)
+    ax1.set_ylabel("% Target = 1", fontsize=10)
+    ax1.set_xticks(decis)
+    ax1.legend(fontsize=9)
+
+    # subplot 2 — volume por decil
+    bars2 = ax2.bar(decis, volumes, color="slategrey", edgecolor="white", linewidth=0.5)
+    for bar, n in zip(bars2, volumes):
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                 f"{n:,}", ha="center", va="bottom", fontsize=8)
+    ax2.set_title(f"Records by Score Decile [{split_name}]",
+                  fontsize=13, fontweight="bold")
+    ax2.set_xlabel("Decil", fontsize=10)
+    ax2.set_ylabel("Registros", fontsize=10)
+    ax2.set_xticks(decis)
+
+    tmpdir = tempfile.mkdtemp()
+    path   = os.path.join(tmpdir, f"decile_analysis_{split_name}.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    mlflow.log_artifact(path)
+    os.remove(path)
+    print(f"  ✓ decile_analysis_{split_name}.png logado")
+
+
 def treinar(spark: SparkSession) -> str:
     """
     Treina o modelo baseline de Logistic Regression, avalia nos três splits
@@ -205,6 +471,14 @@ def treinar(spark: SparkSession) -> str:
             metrics = _avaliar(preds, split_name)
             for k, v in metrics.items():
                 mlflow.log_metric(f"{split_name}_{k}", v)
+
+        # ── artefatos visuais ─────────────────────────────────────
+        print("\nGerando artefatos visuais ...")
+        _log_model_summary(model, train)
+        _plot_roc_pr_curves(model, train, val, test)
+        _plot_target_incidence_timeline(df)
+        for split_name, split_df in [("train", train), ("val", val), ("test", test)]:
+            _plot_decile_analysis(model, split_df, split_name)
 
         # ── assinatura e registro do modelo ───────────────────────
         train_sample = train.select(FEATURE_COLS).limit(100).toPandas()
