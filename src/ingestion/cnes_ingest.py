@@ -40,6 +40,41 @@
 #   O ZIP e os CSVs extraídos são deletados do Volume após a gravação
 #   para economizar espaço no landing.
 
+# ── NOTAS DE DESENVOLVIMENTO ──────────────────────────────────
+#
+# STATUS: pausado — não bloqueante para o MVP
+#
+# O que foi descoberto durante a validação (2026-03-16):
+#
+# 1. NOME REAL DO ARQUIVO NO FTP
+#    Errado no script atual:  ESTABDADOS_{competencia}.csv
+#    Correto:                 BASE_DE_DADOS_CNES_{competencia}.ZIP
+#    Exemplo:                 BASE_DE_DADOS_CNES_202602.ZIP (~709MB)
+#
+# 2. CONTEÚDO DO ZIP
+#    O ZIP contém ~100 CSVs. Os relevantes para o projeto são:
+#    - tbEstabelecimento{competencia}.csv  (~286MB) → bronze_cnes_estabelecimentos
+#    - tbLeito{competencia}.csv            (~0MB)   → bronze_cnes_leitos
+#
+# 3. PENDÊNCIAS ANTES DE RETOMAR
+#    - Corrigir _nome_arquivo() e regex de _listar_competencias_ftp()
+#      para o padrão BASE_DE_DADOS_CNES_{competencia}.ZIP
+#    - Adicionar lógica de descompactação com zipfile
+#    - Extrair só tbEstabelecimento e tbLeito do ZIP (ignorar os demais)
+#    - Deletar ZIP e CSVs do Volume após ingestão (economiza espaço)
+#    - Validar nomes reais das colunas de tbLeito antes de usar
+#      COLUNAS_MAPA_LEITO (download anterior corrompeu o ZIP)
+#    - Confirmar se CO_MUNICIPIO_GESTOR existe em tbLeito
+#      (pode ser necessário join com tbEstabelecimento para obter municipio_id)
+#
+# 4. DECISÃO DE ESCOPO
+#    Para o MVP, bronze_hospitais_leitos já cobre toda a capacidade necessária:
+#    leitos_totais, leitos_complementares, leitos_uti, municipio_id.
+#    O CNES de estabelecimentos entra na Fase 2 para enriquecer com:
+#    num_estabelecimentos, num_hospitais, tipo_estabelecimento por município.
+#
+# ──────────────────────────────────────────────────────────────
+
 import io
 import os
 import re
