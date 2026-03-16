@@ -25,6 +25,11 @@
 #   Semanas sem t+1 (últimas semanas de cada município) → target = null.
 #   ESSAS LINHAS SÃO MANTIDAS — são usadas no scoring ao vivo (semana corrente).
 #
+# Threshold de capacidade mínima: leitos_totais >= 10
+#   Municípios com leitos_totais = 0 não têm hospital próprio.
+#   Municípios com leitos_totais entre 1 e 9 são tratados como erro cadastral —
+#   denominador muito baixo distorce o pressure_score e o percentil do target.
+#
 # Aviso de atraso de notificação:
 #   As últimas 2 semanas de cada ano podem estar incompletas na bronze_srag.
 #   O modelo de treino deve filtrar por semanas suficientemente antigas.
@@ -99,18 +104,25 @@ def _join_srag_capacity(srag, cap):
 
 def _filtrar_sem_hospital(df):
     """
-    Remove município-semanas sem capacidade hospitalar cadastrada
-    (leitos_totais = 0 após o join com capacity).
-    Esses municípios não têm hospital próprio — casos SRAG registrados
-    provavelmente foram atendidos em outro município.
+    Remove município-semanas sem capacidade hospitalar mínima (leitos_totais < 10).
+    - leitos_totais = 0: sem hospital próprio; casos provavelmente atendidos em outro município.
+    - leitos_totais 1-9: provável erro cadastral; denominador muito baixo distorce o pressure_score.
     Mantê-los distorce o pressure_score e o percentil do target.
     """
     total = df.count()
-    sem_leitos = df.filter(F.col("leitos_totais") == 0).count()
-    print(f"\n── Filtro sem hospital ──")
-    print(f"  Removidos (leitos_totais = 0): {sem_leitos:,}  ({sem_leitos/total*100:.1f}%)")
-    print(f"  Municípios sem hospital: ~3,637 (23% do total)")
-    df = df.filter(F.col("leitos_totais") > 0)
+
+    sem_leitos    = df.filter(F.col("leitos_totais") == 0).count()
+    poucos_leitos = df.filter(
+        (F.col("leitos_totais") > 0) & (F.col("leitos_totais") < 10)
+    ).count()
+    removidos = df.filter(F.col("leitos_totais") < 10).count()
+
+    print(f"\n── Filtro capacidade mínima ──")
+    print(f"  Removidos (leitos_totais = 0):       {sem_leitos:,}  (sem hospital)")
+    print(f"  Removidos (leitos_totais 1 a 9):     {poucos_leitos:,}  (erro cadastral provável)")
+    print(f"  Total removidos (leitos_totais < 10):{removidos:,}")
+
+    df = df.filter(F.col("leitos_totais") >= 10)
     print(f"  Mantidos: {df.count():,}")
     return df
 
