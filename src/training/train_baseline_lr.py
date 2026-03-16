@@ -35,7 +35,7 @@ SCHEMA  = "dev_christian_van_bellen"
 
 TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
 MODEL_NAME     = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-EXPERIMENT     = "/mlops-demo/pressure-risk-baseline-lr"
+EXPERIMENT     = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
 
 TARGET_COL = "target_alta_pressao"
 
