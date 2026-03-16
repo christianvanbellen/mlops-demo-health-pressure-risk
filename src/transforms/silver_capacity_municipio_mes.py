@@ -1,19 +1,23 @@
-# src/transforms/silver_capacity_municipio_semana.py
-# Transform Bronze → Silver — Capacidade hospitalar por município × semana epidemiológica
+# src/transforms/silver_capacity_municipio_mes.py
+# Transform Bronze → Silver — Capacidade hospitalar por município × competência mensal
 #
 # Fonte  : ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
-# Destino: ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_semana
+# Destino: ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
 #
-# Grain de saída: municipio_id (CO_IBGE, 6 dígitos) × semana_epidemiologica (AAAA-WW)
+# Grain de saída: municipio_id (CO_IBGE, 6 dígitos) × competencia (AAAAMM)
 #
-# Lógica de semana epidemiológica:
-#   A bronze usa competência mensal (COMP = AAAAMM). Cada mês cobre ~4 semanas
-#   epidemiológicas, mas para o MVP optamos por representar cada competência pela
-#   semana do seu primeiro dia (date(AAAA, MM, 01)).
-#   Isso garante uma granularidade temporal sem ambiguidade no join com a silver_srag,
-#   que opera em semanas. A limitação — uma competência mapear para uma única semana
-#   em vez de 4 — é aceitável para o MVP e deve ser revisada na Fase 2 se o modelo
-#   precisar de variação intra-mensal de capacidade.
+# Por que granularidade mensal (e não semanal):
+#   A fonte de capacidade (CNES / Hospitais e Leitos) é publicada mensalmente.
+#   Cada arquivo representa a fotografia da capacidade instalada naquele mês.
+#   Tentar derivar semanas a partir de COMP introduziria ambiguidade (qual das ~4
+#   semanas do mês representa o mês inteiro?) sem ganho real de informação.
+#   A silver mantém o grain natural da fonte: um registro por município por mês.
+#
+# Join downstream (gold_features):
+#   Para cada semana epidemiológica W, o gold faz:
+#     competencia = AAAAMM  onde  date(AAAA, MM, 01) <= data_semana_W <= último dia do mês
+#   Isso propaga a capacidade mensal para todas as semanas contidas naquele mês,
+#   sem duplicar nem perder dados.
 #
 # Decisão de filtragem:
 #   Registros com municipio_id nulo ou leitos_totais < 0 são removidos, mas
@@ -22,14 +26,13 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql import Window
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
 SCHEMA  = "dev_christian_van_bellen"
 
 TABLE_SRC = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
-TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_semana"
+TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
 
 # Colunas numéricas da bronze (chegam como string) — nulos e "" viram 0
 COLUNAS_NUMERICAS = [
@@ -61,29 +64,6 @@ def _cast_numerico(df):
     return df
 
 
-def _derivar_semana_epidemiologica(df):
-    """
-    Converte COMP (AAAAMM) para data do primeiro dia do mês,
-    depois deriva ano_epi, semana_epi e semana_epidemiologica (AAAA-WW).
-    """
-    df = df.withColumn(
-        "_data_ref",
-        F.to_date(F.concat_ws("-", F.col("COMP").substr(1, 4), F.col("COMP").substr(5, 2), F.lit("01")), "yyyy-MM-dd"),
-    )
-    df = df.withColumn("_semana_num", F.weekofyear(F.col("_data_ref")))
-    df = df.withColumn("_ano_epi",    F.year(F.col("_data_ref")))
-    # formata AAAA-WW com zero-padding na semana
-    df = df.withColumn(
-        "semana_epidemiologica",
-        F.concat(
-            F.col("_ano_epi").cast("string"),
-            F.lit("-"),
-            F.lpad(F.col("_semana_num").cast("string"), 2, "0"),
-        ),
-    )
-    return df.drop("_data_ref", "_semana_num", "_ano_epi")
-
-
 def _flag_hospital(df):
     """Marca 1 se DS_TIPO_UNIDADE contém 'HOSPITAL' (case insensitive)."""
     return df.withColumn(
@@ -93,14 +73,13 @@ def _flag_hospital(df):
 
 
 def _agregar(df):
-    """Agrega por municipio_id × semana_epidemiologica."""
+    """Agrega por municipio_id × competencia (AAAAMM)."""
     return (
-        df.groupBy("CO_IBGE", "semana_epidemiologica")
+        df.groupBy("CO_IBGE", "COMP")
         .agg(
             F.first("MUNICIPIO",  ignorenulls=True).alias("municipio_nome"),
             F.first("UF",         ignorenulls=True).alias("uf"),
             F.first("REGIAO",     ignorenulls=True).alias("regiao"),
-            F.first("COMP",       ignorenulls=True).alias("competencia_ref"),
             F.countDistinct("CNES")                .alias("num_estabelecimentos"),
             F.sum("is_hospital")                   .alias("num_hospitais"),
             F.sum("LEITOS_EXISTENTES")             .alias("leitos_totais"),
@@ -112,6 +91,7 @@ def _agregar(df):
             F.sum("UTI_NEONATAL_EXIST")            .alias("leitos_uti_neonatal"),
         )
         .withColumnRenamed("CO_IBGE", "municipio_id")
+        .withColumnRenamed("COMP",    "competencia")
     )
 
 
@@ -145,8 +125,8 @@ def _adicionar_metadados(df):
     """Adiciona colunas de rastreabilidade do processamento."""
     return (
         df
-        .withColumn("_processed_at",  F.current_timestamp())
-        .withColumn("_source_table",  F.lit("bronze_hospitais_leitos"))
+        .withColumn("_processed_at", F.current_timestamp())
+        .withColumn("_source_table", F.lit("bronze_hospitais_leitos"))
     )
 
 
@@ -160,7 +140,6 @@ def transformar(spark: SparkSession):
 
     df = _cast_numerico(df)
     df = _flag_hospital(df)
-    df = _derivar_semana_epidemiologica(df)
     df = _agregar(df)
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
@@ -180,25 +159,25 @@ def transformar(spark: SparkSession):
 def show_summary(spark: SparkSession):
     """
     Imprime estatísticas básicas da silver para validação pós-execução:
-    - contagem de linhas por semana_epidemiologica
-    - ranges de leitos_totais e leitos_uti
+    - contagem de linhas por competencia
+    - totais nacionais de leitos e UTI
     """
     print(f"\n── Resumo da tabela {TABLE_DST} ──")
     df = spark.table(TABLE_DST)
 
     print(f"  Total de linhas: {df.count():,}")
     print(f"  Municípios distintos: {df.select('municipio_id').distinct().count():,}")
-    print(f"  Semanas distintas: {df.select('semana_epidemiologica').distinct().count():,}")
+    print(f"  Competências distintas: {df.select('competencia').distinct().count():,}")
 
-    print("\n  Leitos por semana (amostra):")
+    print("\n  Leitos por competência (amostra):")
     (
-        df.groupBy("semana_epidemiologica")
+        df.groupBy("competencia")
         .agg(
-            F.count("municipio_id")     .alias("municipios"),
-            F.sum("leitos_totais")      .alias("leitos_totais_br"),
-            F.sum("leitos_uti")         .alias("leitos_uti_br"),
+            F.count("municipio_id").alias("municipios"),
+            F.sum("leitos_totais") .alias("leitos_totais_br"),
+            F.sum("leitos_uti")    .alias("leitos_uti_br"),
         )
-        .orderBy("semana_epidemiologica")
+        .orderBy("competencia")
         .show(20, truncate=False)
     )
 
