@@ -22,6 +22,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.functions import vector_to_array
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 from databricks.feature_engineering import FeatureEngineeringClient
@@ -340,7 +341,7 @@ def _plot_decile_analysis(model, df, split_name: str):
     preds = model.transform(df)
     preds = preds.withColumn(
         "prob_positivo",
-        F.element_at(F.col("probability"), 2).cast("double"),
+        vector_to_array(F.col("probability")).getItem(1).cast("double"),
     )
 
     # passo 2: calcular quantis para definir os decis
