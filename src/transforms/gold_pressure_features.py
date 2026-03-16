@@ -61,15 +61,19 @@ def _agregar_srag_mensal(srag):
     Agrega silver_srag_municipio_semana para grain mensal (municipio_id × competencia).
     A silver já contém a coluna competencia derivada da semana epidemiológica.
     """
+    # uf fora do groupBy: alguns municípios têm casos notificados em UFs diferentes
+    # da residência (ex: Brasília aparece com BA, GO e DF), o que geraria múltiplas
+    # linhas por municipio_id × competencia e quebraria a primary key da feature table.
     return (
-        srag.groupBy("municipio_id", "competencia", "uf")
+        srag.groupBy("municipio_id", "competencia")
         .agg(
-            F.sum("casos_srag")        .alias("casos_srag_mes"),
-            F.sum("casos_obito")       .alias("casos_obito_mes"),
-            F.sum("casos_uti")         .alias("casos_uti_mes"),
-            F.sum("casos_idosos")      .alias("casos_idosos_mes"),
-            F.sum("casos_pediatricos") .alias("casos_pediatricos_mes"),
-            F.count("*")               .alias("semanas_com_dado"),
+            F.first("uf", ignorenulls=True).alias("uf"),
+            F.sum("casos_srag")            .alias("casos_srag_mes"),
+            F.sum("casos_obito")           .alias("casos_obito_mes"),
+            F.sum("casos_uti")             .alias("casos_uti_mes"),
+            F.sum("casos_idosos")          .alias("casos_idosos_mes"),
+            F.sum("casos_pediatricos")     .alias("casos_pediatricos_mes"),
+            F.count("*")                   .alias("semanas_com_dado"),
         )
     )
 
