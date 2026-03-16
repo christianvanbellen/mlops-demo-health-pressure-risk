@@ -33,6 +33,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import Window
+from databricks.feature_engineering import FeatureEngineeringClient
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
@@ -319,8 +320,12 @@ def _adicionar_metadados(df):
 def transformar(spark: SparkSession):
     """
     Executa o pipeline completo Silver → Gold de features de pressão assistencial.
+    Grava via Databricks Feature Engineering Client para registrar lineage e
+    permitir point-in-time lookups no treinamento.
     """
-    print(f"Lendo fontes silver ...")
+    fe = FeatureEngineeringClient()
+
+    print("Lendo fontes silver ...")
     srag = spark.table(TABLE_SRC_SRAG)
     cap  = spark.table(TABLE_SRC_CAP)
     print(f"  srag: {srag.count():,} linhas | cap: {cap.count():,} linhas")
@@ -336,16 +341,34 @@ def transformar(spark: SparkSession):
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
 
-    print(f"\nGravando em {TABLE_DST} ...")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_DST} USING DELTA")
-    (
-        df.write
-        .format("delta")
-        .mode("overwrite")
-        .option("mergeSchema", "true")
-        .saveAsTable(TABLE_DST)
-    )
-    print(f"✓ {TABLE_DST} atualizada.")
+    # verifica se a feature table já existe
+    try:
+        fe.get_table(TABLE_DST)
+        table_exists = True
+    except Exception:
+        table_exists = False
+
+    if not table_exists:
+        print(f"\nCriando feature table {TABLE_DST} ...")
+        fe.create_table(
+            name=TABLE_DST,
+            primary_keys=["municipio_id", "semana_epidemiologica"],
+            df=df,
+            description=(
+                "Feature store de pressão assistencial respiratória. "
+                "Grain: municipio_id x semana_epidemiologica. "
+                "pressure_formula_version=v1, target_definition_version=v1."
+            ),
+        )
+    else:
+        print(f"\nAtualizando feature table {TABLE_DST} ...")
+        fe.write_table(
+            name=TABLE_DST,
+            df=df,
+            mode="overwrite",
+        )
+
+    print(f"✓ Feature table {TABLE_DST} atualizada.")
 
 
 def show_summary(spark: SparkSession):
