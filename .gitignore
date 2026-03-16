@@ -1,3 +1,2 @@
 .databricks
-scratch/*.ipynb
-scratch/*.py
+scratch/
