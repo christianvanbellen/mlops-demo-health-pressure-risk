@@ -1,12 +1,14 @@
 # src/scoring/batch_score.py
 # Batch scoring semanal de risco de pressão assistencial
 #
-# - Aplica @champion sobre competência mais recente (target null)
+# - Aplica @champion sobre a competência mais recente elegível para scoring
+# - Política de confiança: capacity real + SRAG consolidado ou estabilizando
+#   (data_quality_score >= 0.5; competências "recentes" < 45 dias são excluídas)
 # - Modo A/B canary: 20% challenger / 80% champion se --ab ativo
 # - Roteamento determinístico por municipio_id (MD5 hash % 100)
 #   → mesmo município sempre no mesmo modelo durante o período A/B
 # - Grava em gold_pressure_scoring com mode=append (histórico)
-# - risk_class thresholds v1: alto>=0.35, moderado>=0.15, baixo<0.15
+# - risk_class baseado em percentis p85/p70 do score desta competência (v2)
 # - Para ativar A/B: passar ab_test=True ou flag --ab no CLI
 
 from mlflow.tracking import MlflowClient
@@ -42,6 +44,9 @@ FEATURE_COLS = [
 
 # A/B canary: 20% dos municípios vai para @challenger se existir
 AB_CHALLENGER_PCT = 0.20
+
+# threshold mínimo de data_quality_score para uma competência ser scored
+SCORING_MIN_QUALITY = 0.5
 
 
 # ── alias e modelo ───────────────────────────────────────────────
@@ -139,22 +144,58 @@ def _ab_route_col(challenger_exists: bool):
 # ── dados e features ─────────────────────────────────────────────
 def _get_competencia_scoring(spark: SparkSession) -> str:
     """
-    Retorna a competência mais recente com target null — ou seja,
-    municípios para os quais t+1 ainda não existe e o modelo deve prever.
+    Retorna a competência mais recente adequada para scoring
+    seguindo a política de confiança de dados:
+
+      1. target null (mês sem t+1 ainda)
+      2. capacity_is_forward_fill = False (capacity real)
+      3. srag_consolidation_flag != 'recente' (SRAG suficientemente consolidado)
+      4. data_quality_score >= SCORING_MIN_QUALITY
+
+    Política de scoring:
+      consolidado   (>= 90 dias): score confiável
+      estabilizando (>= 45 dias): score aceitável
+      recente       (< 45 dias):  excluído — dados muito parciais
+
+    Loga as competências disponíveis e o motivo da escolha.
     """
-    df     = spark.table(TABLE_FEATURES)
-    result = (
+    df = spark.table(TABLE_FEATURES)
+
+    # todas as competências candidatas ao scoring
+    candidatas = (
         df.filter(F.col(TARGET_COL).isNull())
+          .groupBy("competencia")
+          .agg(
+              F.first("capacity_is_forward_fill").alias("forward_fill"),
+              F.first("srag_consolidation_flag").alias("consolidation"),
+              F.first("data_quality_score").alias("quality_score"),
+              F.count("*").alias("municipios"),
+          )
+          .orderBy(F.col("competencia").desc())
+    )
+
+    print("\n── Competências candidatas ao scoring ──")
+    candidatas.show(truncate=False)
+
+    # aplica política de confiança
+    elegivel = (
+        candidatas
+        .filter(F.col("forward_fill") == False)
+        .filter(F.col("consolidation") != "recente")
+        .filter(F.col("quality_score") >= SCORING_MIN_QUALITY)
         .agg(F.max("competencia").alias("max_comp"))
         .collect()[0]["max_comp"]
     )
-    if result is None:
+
+    if elegivel is None:
         raise ValueError(
-            "Nenhuma competência com target null encontrada em gold_pressure_features. "
-            "Verifique se a tabela está atualizada."
+            "Nenhuma competência elegível para scoring encontrada.\n"
+            "Critérios: capacity real + SRAG consolidado ou estabilizando.\n"
+            "Verifique se gold_pressure_features está atualizado."
         )
-    print(f"  Competência de scoring: {result}")
-    return result
+
+    print(f"\n  ✓ Competência selecionada: {elegivel}")
+    return elegivel
 
 
 def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
@@ -352,6 +393,8 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         "leitos_totais", "leitos_uti",
         "casos_por_leito", "casos_por_leito_lag1",
         "growth_mom", "rolling_std_3m",
+        "srag_consolidation_flag", "data_quality_score",
+        "capacity_is_forward_fill",
     ]
     df_output = df_scored.select(colunas_output)
 

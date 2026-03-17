@@ -43,11 +43,27 @@
 #   leitos_totais >= 10 — remove municípios sem hospital (= 0) e prováveis
 #   erros cadastrais (1-9 leitos), que distorceriam o denominador e o p85.
 #
+# Consolidação do SRAG (srag_consolidation_flag):
+#   O SRAG tem atraso estrutural de notificação. A flag classifica cada
+#   competência por quantos dias se passaram desde o fechamento do mês:
+#     >= 90 dias: "consolidado"   → ~95%+ dos casos notificados
+#     >= 45 dias: "estabilizando" → ~80-90% dos casos notificados
+#      < 45 dias: "recente"       → < 80% — excluído do cálculo do target
+#
+# Qualidade dos dados (data_quality_score — 0 a 1):
+#   Combina capacity_is_forward_fill e srag_consolidation_flag:
+#     forward fill ativo           → 0.3
+#     SRAG recente                 → 0.5
+#     SRAG estabilizando           → 0.8
+#     capacity real + consolidado  → 1.0
+#
 # Colunas de governança:
 #   target_definition_version    = "v2"
 #   target_metric                = "casos_por_leito"
 #   target_percentile            = 0.85
 #   capacity_is_forward_fill     = True/False
+#   srag_consolidation_flag      = "consolidado" | "estabilizando" | "recente"
+#   data_quality_score           = 0.3 | 0.5 | 0.8 | 1.0
 
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
@@ -299,14 +315,76 @@ def _features_sazonais(df):
     )
 
 
+def _adicionar_consolidation_flag(df):
+    """
+    Classifica o nível de consolidação de cada competência
+    baseado em quantos dias se passaram desde o fechamento do mês.
+
+    O SRAG tem atraso estrutural de notificação:
+      >= 90 dias: "consolidado"   → ~95%+ dos casos notificados
+      >= 45 dias: "estabilizando" → ~80-90% dos casos notificados
+       < 45 dias: "recente"       → < 80% dos casos notificados
+
+    Usa a data de hoje como referência.
+    competencia AAAAMM → data de fechamento = último dia do mês MM/AAAA
+    """
+    from datetime import date
+
+    hoje = date.today()
+
+    # converte competencia para data do último dia do mês
+    df = df.withColumn(
+        "_data_fechamento",
+        F.last_day(
+            F.to_date(
+                F.concat(F.col("competencia"), F.lit("01")),
+                "yyyyMMdd",
+            )
+        ),
+    )
+
+    # dias desde o fechamento
+    df = df.withColumn(
+        "_dias_desde_fechamento",
+        F.datediff(F.lit(hoje), F.col("_data_fechamento")),
+    )
+
+    # flag de consolidação
+    df = df.withColumn(
+        "srag_consolidation_flag",
+        F.when(F.col("_dias_desde_fechamento") >= 90, F.lit("consolidado"))
+         .when(F.col("_dias_desde_fechamento") >= 45, F.lit("estabilizando"))
+         .otherwise(F.lit("recente")),
+    )
+
+    # score de qualidade combinado (0 a 1)
+    # penaliza forward fill E consolidação recente
+    df = df.withColumn(
+        "data_quality_score",
+        F.when(
+            F.col("capacity_is_forward_fill") == True,
+            F.lit(0.3),
+        ).when(
+            F.col("srag_consolidation_flag") == "recente",
+            F.lit(0.5),
+        ).when(
+            F.col("srag_consolidation_flag") == "estabilizando",
+            F.lit(0.8),
+        ).otherwise(F.lit(1.0)),
+    )
+
+    df = df.drop("_data_fechamento", "_dias_desde_fechamento")
+    return df
+
+
 def _calcular_target(df):
     """
     Target v2: casos_por_leito do mês seguinte >= percentil 85 nacional daquele mês.
     Último mês de cada município → target null (mantido para scoring ao vivo).
 
-    Competências com capacity_is_forward_fill=True em t+1 são excluídas do
-    cálculo do p85 — capacity estimada distorceria o percentil nacional.
-    Essas linhas ficam com target null (tratadas como scoring only).
+    Competências excluídas do cálculo do p85 (target null):
+      - capacity_is_forward_fill=True em t+1 (capacity estimada)
+      - srag_consolidation_flag="recente" em t+1 (SRAG subnotificado, < 80%)
     """
     # passo 1: valor da métrica alvo no mês seguinte
     df = df.withColumn(
@@ -320,18 +398,25 @@ def _calcular_target(df):
         F.lead("capacity_is_forward_fill", 1).over(MUNICIPIO_W),
     )
 
-    # passo 3: anula casos_por_leito_next quando t+1 é forward fill
+    # passo 3: marca t+1 como recente se SRAG do próximo mês for subnotificado
+    df = df.withColumn(
+        "next_consolidation_flag",
+        F.lead("srag_consolidation_flag", 1).over(MUNICIPIO_W),
+    )
+
+    # passo 4: anula casos_por_leito_next quando t+1 é forward fill OU recente
     # → target ficará null nesses meses (scoring only), p85 não será distorcido
     df = df.withColumn(
         "casos_por_leito_next",
         F.when(
-            F.col("next_is_forward_fill") == True,
+            (F.col("next_is_forward_fill") == True) |
+            (F.col("next_consolidation_flag") == "recente"),
             F.lit(None).cast("double"),
         ).otherwise(F.col("casos_por_leito_next")),
     )
 
-    # remove coluna auxiliar antes do p85
-    df = df.drop("next_is_forward_fill")
+    # remove colunas auxiliares antes do p85
+    df = df.drop("next_is_forward_fill", "next_consolidation_flag")
 
     # passo 4: percentil 85 nacional de casos_por_leito_next por competencia
     # (linhas com casos_por_leito_next null são ignoradas pelo percentile_approx)
@@ -441,6 +526,7 @@ def transformar(spark: SparkSession):
     df = _lags_e_medias_moveis(df)
     df = _features_dinamica(df)
     df = _features_sazonais(df)
+    df = _adicionar_consolidation_flag(df)
     df = _calcular_target(df)
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
