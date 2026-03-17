@@ -233,7 +233,14 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
             auc_roc = None
             auc_pr  = None
 
-        consolidation = str(df_c["srag_consolidation_flag"].iloc[0])
+        # garante que pegamos só o primeiro valor escalar,
+        # mesmo se a coluna tiver nome duplicado após o join
+        col_vals = df_c["srag_consolidation_flag"]
+        if hasattr(col_vals, "iloc"):
+            val = col_vals.iloc[0]
+            consolidation = str(val.iloc[0]) if hasattr(val, "iloc") else str(val)
+        else:
+            consolidation = str(col_vals)
         simulated     = bool(df_c.get("simulated", pd.Series([True])).iloc[0])
 
         resultados.append({
