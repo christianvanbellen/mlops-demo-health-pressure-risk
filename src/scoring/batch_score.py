@@ -214,8 +214,13 @@ def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
     colunas_contexto = [
         "municipio_id", "municipio_nome", "uf", "regiao", "competencia",
     ]
+    colunas_qualidade = [
+        "srag_consolidation_flag",
+        "data_quality_score",
+        "capacity_is_forward_fill",
+    ]
     # FEATURE_COLS já inclui leitos_totais e leitos_uti — não duplicar
-    todas_colunas = colunas_contexto + FEATURE_COLS
+    todas_colunas = colunas_contexto + FEATURE_COLS + colunas_qualidade
     return df.select(todas_colunas)
 
 
