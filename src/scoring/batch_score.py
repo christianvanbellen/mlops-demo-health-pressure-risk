@@ -171,10 +171,11 @@ def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
         df = df.withColumn(col, F.col(col).cast("double"))
 
     colunas_contexto = [
-        "municipio_id", "municipio_nome", "uf", "regiao",
-        "competencia", "leitos_totais", "leitos_uti",
+        "municipio_id", "municipio_nome", "uf", "regiao", "competencia",
     ]
-    return df.select(colunas_contexto + FEATURE_COLS)
+    # FEATURE_COLS já inclui leitos_totais e leitos_uti — não duplicar
+    todas_colunas = colunas_contexto + FEATURE_COLS
+    return df.select(todas_colunas)
 
 
 # ── scoring ──────────────────────────────────────────────────────
