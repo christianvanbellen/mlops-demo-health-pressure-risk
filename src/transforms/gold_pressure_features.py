@@ -303,6 +303,10 @@ def _calcular_target(df):
     """
     Target v2: casos_por_leito do mês seguinte >= percentil 85 nacional daquele mês.
     Último mês de cada município → target null (mantido para scoring ao vivo).
+
+    Competências com capacity_is_forward_fill=True em t+1 são excluídas do
+    cálculo do p85 — capacity estimada distorceria o percentil nacional.
+    Essas linhas ficam com target null (tratadas como scoring only).
     """
     # passo 1: valor da métrica alvo no mês seguinte
     df = df.withColumn(
@@ -310,7 +314,27 @@ def _calcular_target(df):
         F.lead("casos_por_leito", 1).over(MUNICIPIO_W),
     )
 
-    # passo 2: percentil 85 nacional de casos_por_leito_next por competencia
+    # passo 2: marca t+1 como forward fill se capacity do próximo mês for estimada
+    df = df.withColumn(
+        "next_is_forward_fill",
+        F.lead("capacity_is_forward_fill", 1).over(MUNICIPIO_W),
+    )
+
+    # passo 3: anula casos_por_leito_next quando t+1 é forward fill
+    # → target ficará null nesses meses (scoring only), p85 não será distorcido
+    df = df.withColumn(
+        "casos_por_leito_next",
+        F.when(
+            F.col("next_is_forward_fill") == True,
+            F.lit(None).cast("double"),
+        ).otherwise(F.col("casos_por_leito_next")),
+    )
+
+    # remove coluna auxiliar antes do p85
+    df = df.drop("next_is_forward_fill")
+
+    # passo 4: percentil 85 nacional de casos_por_leito_next por competencia
+    # (linhas com casos_por_leito_next null são ignoradas pelo percentile_approx)
     p85 = (
         df.groupBy("competencia")
         .agg(
@@ -318,10 +342,10 @@ def _calcular_target(df):
         )
     )
 
-    # passo 3: join do p85 de volta ao df principal
+    # passo 5: join do p85 de volta ao df principal
     df = df.join(p85, on="competencia", how="left")
 
-    # passo 4: target binário (null onde não há mês seguinte)
+    # passo 6: target binário (null onde não há mês seguinte ou t+1 é forward fill)
     df = (
         df
         .withColumn(
@@ -332,7 +356,7 @@ def _calcular_target(df):
                  .otherwise(F.lit(0)),
             ),
         )
-        # passo 5: colunas de governança
+        # passo 7: colunas de governança
         .withColumn("target_definition_version", F.lit("v2"))
         .withColumn("target_metric",             F.lit("casos_por_leito"))
         .withColumn("target_percentile",         F.lit(0.85))
