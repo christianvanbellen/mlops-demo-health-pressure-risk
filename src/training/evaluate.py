@@ -155,16 +155,28 @@ def _precision_recall_at_k(scores: np.ndarray, labels: np.ndarray, k_values: lis
     return resultado
 
 
+def _get_artifact_path(run_id: str, artifact_subpath: str = "model") -> str:
+    """
+    Retorna o path dbfs:/ do artefato — necessário porque runs:/ usa
+    /dbfs/tmp internamente, que está inacessível neste workspace.
+    """
+    client = MlflowClient()
+    run    = client.get_run(run_id)
+    return f"{run.info.artifact_uri}/{artifact_subpath}"
+
+
 def _carregar_modelo_lr(spark: SparkSession, run_id: str):
     """Carrega modelo LR Spark salvo no MLflow."""
     print(f"  Carregando LR (run_id={run_id}) ...")
-    return mlflow.spark.load_model(f"runs:/{run_id}/model")
+    artifact_path = _get_artifact_path(run_id)
+    return mlflow.spark.load_model(artifact_path)
 
 
 def _carregar_modelo_lgbm(run_id: str):
     """Carrega modelo LightGBM salvo no MLflow."""
     print(f"  Carregando LightGBM (run_id={run_id}) ...")
-    return mlflow.lightgbm.load_model(f"runs:/{run_id}/model")
+    artifact_path = _get_artifact_path(run_id)
+    return mlflow.lightgbm.load_model(artifact_path)
 
 
 def _scores_lr(model, split_sp) -> tuple:
