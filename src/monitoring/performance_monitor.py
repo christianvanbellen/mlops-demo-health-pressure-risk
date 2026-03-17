@@ -233,7 +233,7 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
             auc_roc = None
             auc_pr  = None
 
-        consolidation = df_c["srag_consolidation_flag"].iloc[0]
+        consolidation = str(df_c["srag_consolidation_flag"].iloc[0])
         simulated     = bool(df_c.get("simulated", pd.Series([True])).iloc[0])
 
         resultados.append({
