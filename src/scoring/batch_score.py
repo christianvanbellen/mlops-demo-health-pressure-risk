@@ -180,16 +180,20 @@ def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
 # ── scoring ──────────────────────────────────────────────────────
 def _aplicar_score_lgbm(model, df_spark: DataFrame, model_info: dict) -> DataFrame:
     """
-    Aplica modelo LightGBM (pandas) e devolve DataFrame Spark com risk_score.
+    Aplica modelo LightGBM e devolve DataFrame Spark com risk_score.
+    Preserva TODAS as colunas originais do df_spark.
     """
-    schema_ctx = [c for c in df_spark.columns if c not in FEATURE_COLS]
-    df_pd      = df_spark.select(FEATURE_COLS).toPandas()
-    scores     = model.predict(df_pd)
+    # converte tudo para pandas preservando todas as colunas
+    df_pd = df_spark.toPandas()
 
-    df_ctx               = df_spark.select(schema_ctx).toPandas()
-    df_ctx["risk_score"] = np.round(scores.astype(float), 6)
+    # aplica score só nas feature cols
+    scores = model.predict(df_pd[FEATURE_COLS])
 
-    return df_spark.sparkSession.createDataFrame(df_ctx)
+    # adiciona risk_score ao pandas df completo
+    df_pd["risk_score"] = scores.round(6).astype(float)
+
+    # reconverte para Spark preservando todas as colunas
+    return df_spark.sparkSession.createDataFrame(df_pd)
 
 
 def _aplicar_score_spark(model, df_spark: DataFrame, model_info: dict) -> DataFrame:
