@@ -15,6 +15,17 @@
 #   Agregar por mês suaviza esse ruído e alinha naturalmente com a fonte
 #   de capacidade (CNES / Hospitais e Leitos), que é publicada mensalmente.
 #
+# Join: Capacity (left) × SRAG — todos os municípios com hospital aparecem
+#   Municípios sem casos SRAG no mês ficam com campos de demanda zerados.
+#   Isso preserva os ~3.330 municípios com leitos_totais >= 10 em toda
+#   competência disponível na Capacity, inclusive para scoring ao vivo.
+#
+# Forward fill de capacity:
+#   A fonte Hospitais e Leitos tem atraso típico de 1-2 meses.
+#   Competências presentes na SRAG mas ausentes na Capacity recebem
+#   os dados do último mês disponível (forward fill).
+#   capacity_is_forward_fill = True indica meses com capacity estimada.
+#
 # Target v2 (target_definition_version = "v2"):
 #   target_alta_pressao = 1  se  casos_por_leito(t+1) >= percentil_85_nacional(t+1)
 #   Métrica alvo: casos_por_leito = casos_srag_mes / (leitos_totais + 1)
@@ -33,9 +44,10 @@
 #   erros cadastrais (1-9 leitos), que distorceriam o denominador e o p85.
 #
 # Colunas de governança:
-#   target_definition_version = "v2"
-#   target_metric             = "casos_por_leito"
-#   target_percentile         = 0.85
+#   target_definition_version    = "v2"
+#   target_metric                = "casos_por_leito"
+#   target_percentile            = 0.85
+#   capacity_is_forward_fill     = True/False
 
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
@@ -78,27 +90,99 @@ def _agregar_srag_mensal(srag):
     )
 
 
+def _forward_fill_capacity(cap, srag_mensal):
+    """
+    Expande a capacity para cobrir competências presentes na SRAG mas ausentes
+    na Capacity (atraso típico de 1-2 meses na publicação da fonte).
+
+    Estratégia:
+      1. Identifica o max(competencia) disponível na cap.
+      2. Encontra competências da SRAG que excedem esse máximo.
+      3. Para cada competência futura, duplica os registros do mês mais recente
+         da cap, substituindo o campo competencia pelo mês futuro.
+      4. Une as duas partes com capacity_is_forward_fill como marcador.
+    """
+    max_comp_cap  = cap.agg(F.max("competencia").alias("max_comp")).collect()[0]["max_comp"]
+    max_comp_srag = srag_mensal.agg(F.max("competencia").alias("max_comp")).collect()[0]["max_comp"]
+
+    # competências da SRAG sem cobertura na capacity
+    comps_futuras = [
+        row["competencia"]
+        for row in srag_mensal.select("competencia").distinct().collect()
+        if row["competencia"] > max_comp_cap
+    ]
+
+    print(f"\n── Forward fill de capacity ──")
+    print(f"  Max competência na capacity : {max_comp_cap}")
+    print(f"  Max competência na SRAG     : {max_comp_srag}")
+
+    # marca competências reais como não-forward-fill
+    cap_real = cap.withColumn("capacity_is_forward_fill", F.lit(False))
+
+    if not comps_futuras:
+        print(f"  Nenhuma competência futura — forward fill não necessário.")
+        return cap_real
+
+    print(f"  Competências sem capacity (usarão forward fill de {max_comp_cap}): {sorted(comps_futuras)}")
+
+    # snapshot do último mês disponível — base do forward fill
+    cap_ultimo = cap.filter(F.col("competencia") == max_comp_cap)
+
+    # gera uma cópia por competência futura, substituindo o campo competencia
+    from functools import reduce
+    from pyspark.sql import DataFrame as SparkDF
+
+    partes_ff = [
+        cap_ultimo
+        .withColumn("competencia", F.lit(comp))
+        .withColumn("capacity_is_forward_fill", F.lit(True))
+        for comp in comps_futuras
+    ]
+
+    cap_ff = reduce(SparkDF.unionByName, partes_ff)
+    cap_expandida = cap_real.unionByName(cap_ff)
+
+    print(f"  ✓ Forward fill aplicado para {len(comps_futuras)} competência(s).")
+    return cap_expandida
+
+
 def _join_capacity(srag_mensal, cap):
     """
-    INNER JOIN de srag_mensal com cap em municipio_id + competencia.
+    LEFT JOIN de cap (base) com srag_mensal — todos os municípios com hospital
+    aparecem no Gold em toda competência disponível na Capacity.
+    Municípios sem casos SRAG no mês ficam com campos de demanda zerados.
+    Aplica forward fill na capacity antes do join para cobrir competências
+    presentes na SRAG mas ausentes na fonte de capacidade.
     Filtra leitos_totais >= 10 (remove municípios sem hospital e erros cadastrais).
     """
-    cap_sel = cap.select(
+    cap_expandida = _forward_fill_capacity(cap, srag_mensal)
+
+    cap_sel = cap_expandida.select(
         "municipio_id", "competencia",
         "municipio_nome", "regiao",
         "leitos_totais", "leitos_sus", "leitos_uti",
         "leitos_uti_adulto", "leitos_uti_pediatrico", "leitos_uti_neonatal",
         "num_estabelecimentos", "num_hospitais",
+        "capacity_is_forward_fill",
     )
 
-    df = srag_mensal.join(cap_sel, on=["municipio_id", "competencia"], how="inner")
+    # cap LEFT JOIN srag — inclui todos os municípios com hospital
+    df = cap_sel.join(srag_mensal, on=["municipio_id", "competencia"], how="left")
+
+    # campos de demanda nulos (município sem casos SRAG no mês) → 0
+    campos_demanda = [
+        "casos_srag_mes", "casos_obito_mes", "casos_uti_mes",
+        "casos_idosos_mes", "casos_pediatricos_mes", "semanas_com_dado",
+    ]
+    for campo in campos_demanda:
+        df = df.withColumn(campo, F.coalesce(F.col(campo), F.lit(0)))
 
     total_antes = df.count()
     df = df.filter(F.col("leitos_totais") >= 10)
     total_apos  = df.count()
 
-    print(f"\n── Join srag × capacity ──")
-    print(f"  Após inner join: {total_antes:,}")
+    print(f"\n── Join capacity × srag ──")
+    print(f"  Após left join: {total_antes:,}")
     print(f"  Removidos (leitos_totais < 10): {total_antes - total_apos:,}")
     print(f"  Mantidos: {total_apos:,}")
     return df
