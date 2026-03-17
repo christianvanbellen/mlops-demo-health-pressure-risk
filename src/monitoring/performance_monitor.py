@@ -261,50 +261,136 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
 
 
 # ── artefatos ────────────────────────────────────────────────────
-def _plot_performance_timeline(df_metricas: pd.DataFrame):
+def _plot_performance_timeline(
+    df_metricas: pd.DataFrame,
+    versao_champion: str = "?",
+):
     """
-    Gráfico de linha com Precision@K e AUC-PR ao longo das competências.
-    Destaca o threshold de alerta com linha vermelha tracejada.
-    Diferencia competências simuladas das reais com marcadores diferentes.
+    Figura com 3 subplots:
+      1. Precision@K(15%) ao longo das competências
+      2. AUC-PR ao longo das competências
+      3. Volume de municípios avaliados por competência (barras)
+    Diferencia simulado (backtesting) de real (produção).
     Salva como performance_timeline.png e loga no MLflow.
     """
     plt.style.use("seaborn-v0_8-whitegrid")
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-    df       = df_metricas.sort_values("competencia").reset_index(drop=True)
-    mask_sim = df["simulated"] == True
+    df        = df_metricas.sort_values("competencia").reset_index(drop=True)
+    n         = len(df)
+    mask_sim  = df["simulated"] == True
     mask_real = df["simulated"] == False
+    idx_sim   = [i for i, s in enumerate(df["simulated"]) if s]
+    idx_real  = [i for i, s in enumerate(df["simulated"]) if not s]
 
-    for ax, col, titulo, ylabel, threshold in [
-        (ax1, "precision_at_k", "Precision@K(15%) ao longo do tempo", "Precision@K", PRECISION_K_THRESHOLD),
-        (ax2, "auc_pr",         "AUC-PR ao longo do tempo",           "AUC-PR",      0.55),
-    ]:
-        idx_sim  = [i for i, s in enumerate(df["simulated"]) if s]
-        idx_real = [i for i, s in enumerate(df["simulated"]) if not s]
+    # labels do eixo x: AAAAMM → AAAA-MM
+    x_labels   = [f"{c[:4]}-{c[4:]}" for c in df["competencia"]]
+    tick_step  = max(1, n // 12 * 3 // 3)   # a cada 3 competências no mínimo
+    tick_step  = max(3, tick_step)
+    tick_idxs  = list(range(0, n, tick_step))
 
-        if mask_sim.any():
-            ax.plot(idx_sim, df[col][mask_sim].values,
-                    "o--", color="steelblue", alpha=0.7, markersize=4,
-                    label="Simulado (backtesting)")
-        if mask_real.any():
-            ax.plot(idx_real, df[col][mask_real].values,
-                    "o-", color="darkorange", linewidth=2, markersize=6,
-                    label="Real (produção)")
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
-        ax.axhline(y=threshold, color="red", linestyle="--",
-                   linewidth=1.2, alpha=0.7, label="Threshold de alerta")
-        ax.set_title(titulo, fontsize=13, fontweight="bold")
-        ax.set_ylabel(ylabel, fontsize=10)
-        ax.legend(fontsize=9)
-        ax.set_ylim(0, 1.05)
+    # ── subplot 1 — Precision@K ────────────────────────────────────
+    thr1 = PRECISION_K_THRESHOLD
 
-    # eixo x com labels de competência
-    tick_step = max(1, len(df) // 12)
-    ax2.set_xticks(range(0, len(df), tick_step))
-    ax2.set_xticklabels(df["competencia"].iloc[::tick_step], rotation=45, fontsize=8)
-    ax2.set_xlabel("Competência", fontsize=10)
+    # faixas de fundo ok / alerta
+    ax1.axhspan(thr1, 1.0, color="green", alpha=0.08, label="Zona ok")
+    ax1.axhspan(0.0,  thr1, color="red",  alpha=0.08, label="Zona alerta")
 
-    fig.tight_layout()
+    if mask_sim.any():
+        ax1.plot(idx_sim, df["precision_at_k"][mask_sim].values,
+                 "o--", color="steelblue", alpha=0.7, markersize=4,
+                 label="Simulado (backtesting)")
+    if mask_real.any():
+        ax1.plot(idx_real, df["precision_at_k"][mask_real].values,
+                 "o-", color="darkorange", linewidth=2, markersize=6,
+                 label="Real (produção)")
+
+    # anotações de valor em cada ponto
+    for i, v in enumerate(df["precision_at_k"]):
+        if pd.notna(v):
+            ax1.annotate(f"{v:.2f}", xy=(i, v), xytext=(0, 5),
+                         textcoords="offset points", fontsize=7, ha="center")
+
+    ax1.axhline(y=thr1, color="red", linestyle="--", linewidth=1.2,
+                alpha=0.7, label="Threshold de alerta")
+    ax1.set_title("Precision@K(15%) — Backtesting Histórico",
+                  fontsize=13, fontweight="bold")
+    ax1.set_ylabel("Precision@K", fontsize=10)
+    ax1.set_ylim(0, 1.0)
+    ax1.legend(fontsize=9, loc="lower left")
+
+    # ── subplot 2 — AUC-PR ────────────────────────────────────────
+    thr2 = 0.55
+
+    ax2.axhspan(thr2, 1.0, color="green", alpha=0.08)
+    ax2.axhspan(0.0,  thr2, color="red",  alpha=0.08)
+
+    if mask_sim.any():
+        ax2.plot(idx_sim, df["auc_pr"][mask_sim].values,
+                 "o--", color="steelblue", alpha=0.7, markersize=4)
+    if mask_real.any():
+        ax2.plot(idx_real, df["auc_pr"][mask_real].values,
+                 "o-", color="darkorange", linewidth=2, markersize=6)
+
+    for i, v in enumerate(df["auc_pr"]):
+        if pd.notna(v):
+            ax2.annotate(f"{v:.2f}", xy=(i, v), xytext=(0, 5),
+                         textcoords="offset points", fontsize=7, ha="center")
+
+    ax2.axhline(y=thr2, color="red", linestyle="--", linewidth=1.2, alpha=0.7)
+    ax2.set_title("AUC-PR ao longo do tempo", fontsize=13, fontweight="bold")
+    ax2.set_ylabel("AUC-PR", fontsize=10)
+    ax2.set_ylim(0, 1.0)
+
+    # ── subplot 3 — Volume de municípios ──────────────────────────
+    mediana_n = df["n_municipios"].median()
+
+    bar_colors = [
+        "darkorange" if not s else "lightsteelblue"
+        for s in df["simulated"]
+    ]
+    ax3.bar(range(n), df["n_municipios"], color=bar_colors, alpha=0.85)
+    ax3.axhline(y=mediana_n, color="gray", linestyle="--", linewidth=1.0,
+                alpha=0.8, label=f"Mediana ({int(mediana_n):,})")
+
+    # anota n apenas nas últimas 6 competências
+    for i in range(max(0, n - 6), n):
+        v = df["n_municipios"].iloc[i]
+        ax3.annotate(f"{v:,}", xy=(i, v), xytext=(0, 4),
+                     textcoords="offset points", fontsize=7, ha="center")
+
+    ax3.set_title("Municípios Avaliados por Competência",
+                  fontsize=13, fontweight="bold")
+    ax3.set_ylabel("Municípios", fontsize=10)
+    ax3.set_ylim(0, df["n_municipios"].max() * 1.15)
+    ax3.legend(fontsize=9)
+
+    # ── eixo x compartilhado ───────────────────────────────────────
+    ax3.set_xticks(tick_idxs)
+    ax3.set_xticklabels([x_labels[i] for i in tick_idxs], rotation=45, fontsize=8)
+    ax3.set_xlabel("Competência", fontsize=10)
+
+    # linha vertical separando última simulada da primeira real
+    if mask_sim.any() and mask_real.any():
+        ultimo_sim   = max(idx_sim)
+        primeiro_real = min(idx_real)
+        sep_x = (ultimo_sim + primeiro_real) / 2
+        for ax in (ax1, ax2, ax3):
+            ax.axvline(x=sep_x, color="gray", linestyle=":", linewidth=1.2,
+                       alpha=0.6)
+
+    # título geral
+    fig.suptitle(
+        f"Monitor de Performance — @champion v{versao_champion}\n"
+        f"Avaliado em {date.today()}  |  {n} competências  |  "
+        f"Threshold Precision@K={PRECISION_K_THRESHOLD}",
+        fontsize=12,
+        fontweight="bold",
+        y=1.01,
+    )
+
+    plt.tight_layout()
 
     tmpdir = tempfile.mkdtemp()
     path   = os.path.join(tmpdir, "performance_timeline.png")
@@ -379,7 +465,9 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
         mlflow.set_tag("monitor_status", status)
 
         # artefatos
-        _plot_performance_timeline(df_metricas)
+        client_mv        = MlflowClient()
+        champion_version = client_mv.get_model_version_by_alias(MODEL_NAME, "champion").version
+        _plot_performance_timeline(df_metricas, versao_champion=champion_version)
 
         # grava resultado no TABLE_MONITOR (append)
         df_spark = spark.createDataFrame(df_metricas)
