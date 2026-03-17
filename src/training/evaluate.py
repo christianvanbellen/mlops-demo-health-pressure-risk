@@ -1,30 +1,28 @@
 # src/training/evaluate.py
-# Avaliação comparativa e promoção do champion
+# Avaliação comparativa e promoção de modelos via lógica champion/challenger
 #
-# Compara LR Baseline vs LightGBM treinados em train_baseline_lr.py e train_gbt.py.
-# Declara o champion e atribui o alias @champion no Unity Catalog Model Registry.
+# Fluxo:
+#   1. Carrega e avalia os dois novos modelos (LR Baseline e LightGBM).
+#   2. Se não existe @champion: promove o melhor automaticamente (first_deploy).
+#   3. Se já existe @champion: avalia o champion atual nos mesmos dados.
+#      a. Novo melhor > champion → registra como @challenger + aciona human gate.
+#      b. Novo melhor <= champion → no_change, champion mantido.
 #
-# Critério de promoção: Precision@K(15% do val set)
-#   K(15%) representa os municípios que um gestor de saúde monitoraria
-#   num ciclo mensal — alerta acionável, não apenas ranking.
+# Critério: Precision@K(15% do val set)
+#   K(15%) representa os municípios que um gestor monitoraria num ciclo mensal.
 #   AUC-ROC mede discriminação geral; Precision@K mede utilidade operacional.
 #
 # Artefatos gerados:
-#   - evaluation_report.json      : resumo estruturado para auditoria
-#   - precision_at_k_comparison.png : curvas Precision@K val e test
-#
-# Pré-requisito: ambos os modelos devem estar treinados e registrados no
-#   MLflow antes de executar este script. Passar os run_ids como argumento.
+#   - evaluation_report.json          : resumo estruturado para auditoria
+#   - precision_at_k_comparison.png   : curvas Precision@K val e test
 
 import mlflow
 import mlflow.lightgbm
 import mlflow.spark
 from mlflow.tracking import MlflowClient
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from sklearn.metrics import roc_auc_score, average_precision_score
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -32,7 +30,9 @@ from pyspark.ml.functions import vector_to_array
 import tempfile
 import os
 import json
+import hashlib
 from datetime import datetime
+import uuid
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
@@ -60,7 +60,46 @@ VAL_END    = "202506"
 TEST_START = "202507"
 
 
-# ── funções ─────────────────────────────────────────────────────
+# ── aliases ─────────────────────────────────────────────────────
+def _champion_existe() -> bool:
+    """Retorna True se o alias @champion está atribuído no registry."""
+    client = MlflowClient()
+    try:
+        client.get_registered_model_alias(MODEL_NAME, "champion")
+        return True
+    except Exception:
+        return False
+
+
+def _get_version_por_run_id(run_id: str) -> str:
+    """Encontra a versão registrada no registry para um dado run_id."""
+    client   = MlflowClient()
+    versions = client.search_model_versions(f"name='{MODEL_NAME}'")
+    for v in versions:
+        if v.run_id == run_id:
+            return v.version
+    raise ValueError(f"Versão não encontrada para run_id={run_id}")
+
+
+def _registrar_alias(version: str, alias: str):
+    """Atribui um alias (champion ou challenger) a uma versão no registry."""
+    client = MlflowClient()
+    client.set_registered_model_alias(
+        name=MODEL_NAME,
+        alias=alias,
+        version=version,
+    )
+    print(f"  ✓ Alias @{alias} → versão {version}")
+
+
+def _get_champion_run_id() -> str:
+    """Retorna o run_id da versão atualmente marcada como @champion."""
+    client = MlflowClient()
+    mv     = client.get_model_version_by_alias(MODEL_NAME, "champion")
+    return mv.run_id
+
+
+# ── dados e avaliação ────────────────────────────────────────────
 def _carregar_dados(spark: SparkSession):
     """
     Lê gold_pressure_features, filtra linhas com target válido,
@@ -105,9 +144,9 @@ def _precision_recall_at_k(scores: np.ndarray, labels: np.ndarray, k_values: lis
 
     resultado = {}
     for k in k_values:
-        k_clip     = min(k, len(labels))
-        top_k      = labels_ord[:k_clip]
-        tp_k       = int(top_k.sum())
+        k_clip   = min(k, len(labels))
+        top_k    = labels_ord[:k_clip]
+        tp_k     = int(top_k.sum())
         resultado[k] = {
             "precision@k": tp_k / (k_clip + 1e-9),
             "recall@k":    tp_k / (n_positivos + 1e-9),
@@ -143,11 +182,6 @@ def _scores_lr(model, split_sp) -> tuple:
     return scores, labels
 
 
-def _scores_lgbm(model, X_pd: pd.DataFrame, y_pd: pd.Series) -> tuple:
-    """Extrai scores LightGBM e converte labels para numpy."""
-    return model.predict(X_pd), y_pd.values
-
-
 def _avaliar_modelo(scores: np.ndarray, labels: np.ndarray,
                     split_name: str, model_name: str, k_ref: int) -> dict:
     """
@@ -165,21 +199,22 @@ def _avaliar_modelo(scores: np.ndarray, labels: np.ndarray,
           f"  Rec@{k_ref}={pk_results[k_ref]['recall@k']:.4f}")
 
     return {
-        "auc_roc":            auc_roc,
-        "auc_pr":             auc_pr,
-        "precision_at_k_ref": pk_results[k_ref]["precision@k"],
-        "recall_at_k_ref":    pk_results[k_ref]["recall@k"],
+        "auc_roc":               auc_roc,
+        "auc_pr":                auc_pr,
+        "precision_at_k_ref":    pk_results[k_ref]["precision@k"],
+        "recall_at_k_ref":       pk_results[k_ref]["recall@k"],
         "precision_recall_at_k": pk_results,
     }
 
 
+# ── artefatos ────────────────────────────────────────────────────
 def _plot_comparacao(resultados: dict, k_ref_val: int, k_ref_test: int):
     """
-    Curvas Precision@K para val e test dos dois modelos lado a lado.
+    Curvas Precision@K para val e test dos dois novos modelos lado a lado.
     """
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    model_keys   = ["baseline_logistic_regression", "lightgbm_gbt"]
+    model_keys    = ["baseline_logistic_regression", "lightgbm_gbt"]
     display_names = {"baseline_logistic_regression": "LR Baseline",
                      "lightgbm_gbt":                "LightGBM"}
     colors        = {"baseline_logistic_regression": "steelblue",
@@ -188,8 +223,8 @@ def _plot_comparacao(resultados: dict, k_ref_val: int, k_ref_test: int):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     for ax, split_key, k_ref, titulo in [
-        (ax1, "val",  k_ref_val,  f"Precision@K — Val Set"),
-        (ax2, "test", k_ref_test, f"Precision@K — Test Set"),
+        (ax1, "val",  k_ref_val,  "Precision@K — Val Set"),
+        (ax2, "test", k_ref_test, "Precision@K — Test Set"),
     ]:
         for mk in model_keys:
             pk_data = resultados[mk][split_key]["precision_recall_at_k"]
@@ -198,10 +233,9 @@ def _plot_comparacao(resultados: dict, k_ref_val: int, k_ref_test: int):
             ax.plot(k_vals, prec, marker="o", markersize=4, linewidth=2,
                     color=colors[mk], label=display_names[mk])
 
-        k_ref_local = k_ref_val if split_key == "val" else k_ref_test
-        ax.axvline(x=k_ref_local, color="red", linestyle="--", linewidth=1.2, alpha=0.7)
-        ax.annotate(f"K ref (15%)\nK={k_ref_local:,}", xy=(k_ref_local, ax.get_ylim()[1] * 0.9),
-                    xytext=(k_ref_local + 5, ax.get_ylim()[1] * 0.88),
+        ax.axvline(x=k_ref, color="red", linestyle="--", linewidth=1.2, alpha=0.7)
+        ax.annotate(f"K ref (15%)\nK={k_ref:,}", xy=(k_ref, ax.get_ylim()[1] * 0.9),
+                    xytext=(k_ref + 5, ax.get_ylim()[1] * 0.88),
                     fontsize=8, color="red")
         ax.set_title(titulo, fontsize=13, fontweight="bold")
         ax.set_xlabel("K (municípios alertados)", fontsize=10)
@@ -218,38 +252,60 @@ def _plot_comparacao(resultados: dict, k_ref_val: int, k_ref_test: int):
     print("  ✓ precision_at_k_comparison.png logado")
 
 
-def _gerar_relatorio(resultados: dict, champion_name: str,
-                     k_ref_val: int, k_ref_test: int):
+def _gerar_relatorio(
+    retrain_id: str,
+    resultados_novos: dict,
+    champion_info: dict | None,
+    melhor_key: str,
+    melhor_version: str,
+    decision: str,
+    human_gate: bool,
+    k_ref_val: int,
+    k_ref_test: int,
+    next_steps: list,
+):
     """
-    Serializa métricas de comparação em evaluation_report.json e loga no MLflow.
+    Serializa o estado completo da avaliação em evaluation_report.json
+    e loga no MLflow. Inclui decision, human_gate e instruções de next_steps.
     """
-    def _resumo(res, k_ref):
-        return {
-            "run_id":              res["run_id"],
-            "val_auc_roc":         round(res["val"]["auc_roc"], 6),
-            "val_auc_pr":          round(res["val"]["auc_pr"], 6),
-            "val_precision_at_k":  round(res["val"]["precision_at_k_ref"], 6),
-            "val_recall_at_k":     round(res["val"]["recall_at_k_ref"], 6),
-            "test_auc_roc":        round(res["test"]["auc_roc"], 6),
-            "test_auc_pr":         round(res["test"]["auc_pr"], 6),
-            "test_precision_at_k": round(res["test"]["precision_at_k_ref"], 6),
-            "test_recall_at_k":    round(res["test"]["recall_at_k_ref"], 6),
-        }
+    melhor = resultados_novos[melhor_key]
 
     relatorio = {
-        "evaluation_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "champion":        champion_name,
-        "criterion":       f"precision@k({k_ref_val}) no val set",
-        "k_ref_val":       k_ref_val,
-        "k_ref_test":      k_ref_test,
+        "evaluation_date":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "retrain_id":       retrain_id,
+        "champion_exists":  champion_info is not None,
+        "decision":         decision,
+        "champion_alias":   "@champion",
+        "challenger_alias": "@challenger" if decision == "registered_challenger" else None,
+        "criterion":        f"precision@k(15%) no val set",
+        "k_ref_val":        k_ref_val,
+        "k_ref_test":       k_ref_test,
+        "human_gate_required": human_gate,
+        "human_gate_instructions": (
+            f"Acesse o MLflow Model Registry ({MODEL_NAME}), "
+            f"compare @champion e @challenger e promova manualmente "
+            f"atribuindo o alias @champion à versão {melhor_version}."
+            if human_gate else None
+        ),
         "models": {
-            "baseline_logistic_regression": _resumo(
-                resultados["baseline_logistic_regression"], k_ref_val
-            ),
-            "lightgbm_gbt": _resumo(
-                resultados["lightgbm_gbt"], k_ref_val
+            "melhor_novo_modelo": {
+                "run_id":               melhor["run_id"],
+                "model_type":           melhor_key,
+                "val_auc_roc":          round(melhor["val"]["auc_roc"], 6),
+                "val_auc_pr":           round(melhor["val"]["auc_pr"], 6),
+                "val_precision_at_k":   round(melhor["val"]["precision_at_k_ref"], 6),
+                "test_precision_at_k":  round(melhor["test"]["precision_at_k_ref"], 6),
+            },
+            "champion_atual": (
+                {
+                    "run_id":             champion_info["run_id"],
+                    "val_precision_at_k": round(champion_info["val_precision_at_k"], 6),
+                    "test_precision_at_k": round(champion_info["test_precision_at_k"], 6),
+                }
+                if champion_info is not None else None
             ),
         },
+        "next_steps": next_steps,
     }
 
     print("\n── Relatório de avaliação ──")
@@ -264,47 +320,37 @@ def _gerar_relatorio(resultados: dict, champion_name: str,
     print("  ✓ evaluation_report.json logado")
 
 
-def _promover_champion(champion_run_id: str, champion_name: str):
+# ── auxiliar ────────────────────────────────────────────────────
+def _inferir_model_type(run_id: str) -> str:
     """
-    Encontra a versão do modelo registrada no run e atribui alias @champion.
+    Infere o tipo de modelo a partir dos parâmetros do run no MLflow.
+    Retorna 'lightgbm' ou 'spark'.
     """
-    client   = MlflowClient()
-    versions = client.search_model_versions(f"name='{MODEL_NAME}'")
-
-    champion_version = None
-    for v in versions:
-        if v.run_id == champion_run_id:
-            champion_version = v.version
-            break
-
-    if champion_version is None:
-        raise ValueError(
-            f"Versão do modelo não encontrada para run_id={champion_run_id}. "
-            f"Certifique-se de que o modelo foi registrado no run de treinamento."
-        )
-
-    client.set_registered_model_alias(
-        name=MODEL_NAME,
-        alias="champion",
-        version=champion_version,
-    )
-
-    print(f"\n✓ Champion promovido:")
-    print(f"  Modelo  : {MODEL_NAME}")
-    print(f"  Versão  : {champion_version}")
-    print(f"  Run ID  : {champion_run_id}")
-    print(f"  Alias   : @champion")
+    client     = MlflowClient()
+    run        = client.get_run(run_id)
+    params     = run.data.params
+    model_type = params.get("model_type", "").lower()
+    if "lightgbm" in model_type:
+        return "lightgbm"
+    return "spark"
 
 
-def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str) -> tuple:
+# ── função principal ─────────────────────────────────────────────
+def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str,
+            retrain_id: str = None) -> tuple:
     """
-    Compara LR e LightGBM, declara o champion por Precision@K(15% val)
-    e atribui o alias @champion no Unity Catalog Model Registry.
-    Retorna (champion_name, champion_run_id).
+    Compara LR e LightGBM e decide entre first_deploy, registered_challenger
+    ou no_change com base na lógica champion/challenger.
+
+    Retorna (decision, melhor_run_id).
     """
+    retrain_id = retrain_id or str(uuid.uuid4())[:8]
+
     mlflow.set_experiment(EXPERIMENT)
 
-    with mlflow.start_run(run_name="model_evaluation") as run:
+    with mlflow.start_run(run_name=f"evaluation_{retrain_id}") as run:
+
+        mlflow.set_tag("retrain_id", retrain_id)
 
         # ── dados ──────────────────────────────────────────────────
         df             = _carregar_dados(spark)
@@ -320,77 +366,152 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str) -> tuple:
         X_test = test.select(FEATURE_COLS).toPandas()
         y_test = test.select(TARGET_COL).toPandas()[TARGET_COL]
 
-        # ── modelos ────────────────────────────────────────────────
+        # ── carrega e avalia os dois novos modelos ─────────────────
         print("\nCarregando modelos do MLflow ...")
         lr_model   = _carregar_modelo_lr(spark, lr_run_id)
         lgbm_model = _carregar_modelo_lgbm(lgbm_run_id)
 
-        # ── scores ─────────────────────────────────────────────────
-        print("\nExtaindo scores ...")
+        print("\n── Métricas dos novos modelos ──")
         lr_scores_val,  lr_labels_val  = _scores_lr(lr_model, val)
         lr_scores_test, lr_labels_test = _scores_lr(lr_model, test)
-        lgbm_scores_val  = lgbm_model.predict(X_val)
-        lgbm_scores_test = lgbm_model.predict(X_test)
 
-        # ── avaliação ──────────────────────────────────────────────
-        print("\n── Métricas de avaliação ──")
-        resultados = {
+        resultados_novos = {
             "baseline_logistic_regression": {
-                "run_id": lr_run_id,
-                "val":  _avaliar_modelo(lr_scores_val,   lr_labels_val,       "val",  "LR",   k_ref_val),
-                "test": _avaliar_modelo(lr_scores_test,  lr_labels_test,      "test", "LR",   k_ref_test),
+                "run_id":     lr_run_id,
+                "model_type": "baseline_logistic_regression",
+                "val":  _avaliar_modelo(lr_scores_val,               lr_labels_val,       "val",  "LR",   k_ref_val),
+                "test": _avaliar_modelo(lr_scores_test,              lr_labels_test,      "test", "LR",   k_ref_test),
             },
             "lightgbm_gbt": {
-                "run_id": lgbm_run_id,
-                "val":  _avaliar_modelo(lgbm_scores_val,  y_val.values,  "val",  "LGBM", k_ref_val),
-                "test": _avaliar_modelo(lgbm_scores_test, y_test.values, "test", "LGBM", k_ref_test),
+                "run_id":     lgbm_run_id,
+                "model_type": "lightgbm_gbt",
+                "val":  _avaliar_modelo(lgbm_model.predict(X_val),   y_val.values,  "val",  "LGBM", k_ref_val),
+                "test": _avaliar_modelo(lgbm_model.predict(X_test),  y_test.values, "test", "LGBM", k_ref_test),
             },
         }
 
-        print("\n── Comparação val ──")
-        for model_key, res in resultados.items():
-            v = res["val"]
-            print(f"  {model_key:<35}  AUC-ROC={v['auc_roc']:.4f}  AUC-PR={v['auc_pr']:.4f}  Prec@K={v['precision_at_k_ref']:.4f}")
+        # melhor dos dois novos (por Precision@K no val)
+        melhor_key = max(
+            resultados_novos,
+            key=lambda k: resultados_novos[k]["val"]["precision_at_k_ref"],
+        )
+        melhor         = resultados_novos[melhor_key]
+        melhor_version = _get_version_por_run_id(melhor["run_id"])
 
-        print("\n── Comparação test ──")
-        for model_key, res in resultados.items():
-            t = res["test"]
-            print(f"  {model_key:<35}  AUC-ROC={t['auc_roc']:.4f}  AUC-PR={t['auc_pr']:.4f}  Prec@K={t['precision_at_k_ref']:.4f}")
+        # ── lógica champion/challenger ─────────────────────────────
+        champion_existe = _champion_existe()
 
-        # ── decisão do champion ────────────────────────────────────
-        lr_prec   = resultados["baseline_logistic_regression"]["val"]["precision_at_k_ref"]
-        lgbm_prec = resultados["lightgbm_gbt"]["val"]["precision_at_k_ref"]
+        if not champion_existe:
+            # CASO 1: primeiro deploy — sem gate humano
+            _registrar_alias(melhor_version, "champion")
+            decision     = "first_deploy"
+            human_gate   = False
+            champion_info = None
+            next_steps   = [
+                "Primeiro modelo promovido automaticamente como @champion.",
+                "Nenhuma ação necessária.",
+                f"Modelo: {melhor_key}  |  Versão: {melhor_version}",
+            ]
+            print(f"\n✓ FIRST DEPLOY — {melhor_key} v{melhor_version} promovido como @champion")
 
-        if lgbm_prec >= lr_prec:
-            champion_name   = "lightgbm_gbt"
-            champion_run_id = lgbm_run_id
         else:
-            champion_name   = "baseline_logistic_regression"
-            champion_run_id = lr_run_id
+            # CASO 2: já existe champion — avalia-o nos mesmos dados
+            champion_run_id    = _get_champion_run_id()
+            champion_model_type = _inferir_model_type(champion_run_id)
 
-        print(f"\n✓ Champion declarado: {champion_name}")
-        print(f"  Critério: Precision@K({k_ref_val}) no val")
-        print(f"  LR:   {lr_prec:.4f}")
-        print(f"  LGBM: {lgbm_prec:.4f}")
+            print(f"\nCarregando champion atual (run_id={champion_run_id}) ...")
+            if champion_model_type == "lightgbm":
+                champ_model       = _carregar_modelo_lgbm(champion_run_id)
+                champ_scores_val  = champ_model.predict(X_val)
+                champ_scores_test = champ_model.predict(X_test)
+                champ_labels_val  = y_val.values
+                champ_labels_test = y_test.values
+            else:
+                champ_model                         = _carregar_modelo_lr(spark, champion_run_id)
+                champ_scores_val,  champ_labels_val  = _scores_lr(champ_model, val)
+                champ_scores_test, champ_labels_test = _scores_lr(champ_model, test)
 
-        # ── artefatos e métricas ───────────────────────────────────
+            print("\n── Métricas do champion atual ──")
+            champ_metrics_val  = _avaliar_modelo(champ_scores_val,  champ_labels_val,  "val",  "CHAMPION", k_ref_val)
+            champ_metrics_test = _avaliar_modelo(champ_scores_test, champ_labels_test, "test", "CHAMPION", k_ref_test)
+
+            champ_prec = champ_metrics_val["precision_at_k_ref"]
+            novo_prec  = melhor["val"]["precision_at_k_ref"]
+            delta      = novo_prec - champ_prec
+
+            champion_info = {
+                "run_id":              champion_run_id,
+                "val_precision_at_k":  champ_prec,
+                "test_precision_at_k": champ_metrics_test["precision_at_k_ref"],
+            }
+
+            if delta > 0:
+                # novo modelo supera o champion — registra como @challenger
+                _registrar_alias(melhor_version, "challenger")
+                decision   = "registered_challenger"
+                human_gate = True
+                next_steps = [
+                    f"Challenger registrado: {melhor_key} v{melhor_version}",
+                    f"Ganho em Precision@K(val): +{delta:.4f} ({champ_prec:.4f} → {novo_prec:.4f})",
+                    "Para promover o challenger:",
+                    f"  1. Abra o MLflow Model Registry",
+                    f"  2. Acesse o modelo {MODEL_NAME}",
+                    f"  3. Remova o alias @champion da versão atual",
+                    f"  4. Atribua @champion à versão {melhor_version}",
+                    "Para ativar A/B test (canary 20%):",
+                    f"  Mantenha ambos os aliases e configure AB_TEST=true no Job de scoring",
+                ]
+                print(f"\n✓ CHALLENGER REGISTRADO — {melhor_key} v{melhor_version}")
+                print(f"  Champion atual: Prec@K={champ_prec:.4f}")
+                print(f"  Challenger:     Prec@K={novo_prec:.4f}  (delta={delta:+.4f})")
+                print(f"  → Human gate necessário. Ver evaluation_report.json para instruções.")
+            else:
+                # novo modelo não supera o champion
+                decision   = "no_change"
+                human_gate = False
+                next_steps = [
+                    "Novo modelo não supera o champion atual.",
+                    f"Champion mantido: Prec@K={champ_prec:.4f}",
+                    f"Novo modelo:      Prec@K={novo_prec:.4f}  (delta={delta:+.4f})",
+                    "Nenhuma ação necessária.",
+                ]
+                print(f"\n✓ NO CHANGE — champion mantido")
+                print(f"  Champion: Prec@K={champ_prec:.4f}")
+                print(f"  Novo:     Prec@K={novo_prec:.4f}  (delta={delta:+.4f})")
+
+        # ── artefatos ──────────────────────────────────────────────
         print("\nGerando artefatos ...")
-        _plot_comparacao(resultados, k_ref_val, k_ref_test)
-        _gerar_relatorio(resultados, champion_name, k_ref_val, k_ref_test)
+        _plot_comparacao(resultados_novos, k_ref_val, k_ref_test)
+        _gerar_relatorio(
+            retrain_id=retrain_id,
+            resultados_novos=resultados_novos,
+            champion_info=champion_info,
+            melhor_key=melhor_key,
+            melhor_version=melhor_version,
+            decision=decision,
+            human_gate=human_gate,
+            k_ref_val=k_ref_val,
+            k_ref_test=k_ref_test,
+            next_steps=next_steps,
+        )
 
+        mlflow.set_tags({
+            "retrain_id":        retrain_id,
+            "decision":          decision,
+            "human_gate":        str(human_gate),
+            "champion_version":  melhor_version if not champion_existe else "unchanged",
+        })
         mlflow.log_metrics({
-            "lr_val_auc_roc":          resultados["baseline_logistic_regression"]["val"]["auc_roc"],
-            "lr_val_precision_at_k":   lr_prec,
-            "lgbm_val_auc_roc":        resultados["lightgbm_gbt"]["val"]["auc_roc"],
-            "lgbm_val_precision_at_k": lgbm_prec,
+            "lr_val_auc_roc":          resultados_novos["baseline_logistic_regression"]["val"]["auc_roc"],
+            "lr_val_precision_at_k":   resultados_novos["baseline_logistic_regression"]["val"]["precision_at_k_ref"],
+            "lgbm_val_auc_roc":        resultados_novos["lightgbm_gbt"]["val"]["auc_roc"],
+            "lgbm_val_precision_at_k": resultados_novos["lightgbm_gbt"]["val"]["precision_at_k_ref"],
             "k_ref_val":               float(k_ref_val),
         })
 
-        # ── promoção ───────────────────────────────────────────────
-        _promover_champion(champion_run_id, champion_name)
-
         print(f"\n✓ Evaluation run ID: {run.info.run_id}")
-        return champion_name, champion_run_id
+        print(f"  Decision: {decision}")
+        return decision, melhor["run_id"]
 
 
 # ── entrypoint ───────────────────────────────────────────────────
