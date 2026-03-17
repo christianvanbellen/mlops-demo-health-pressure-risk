@@ -218,22 +218,32 @@ def _aplicar_score_spark(model, df_spark: DataFrame, model_info: dict) -> DataFr
 
 def _classificar_risco(df: DataFrame) -> DataFrame:
     """
-    Adiciona risk_class baseado em risk_score.
-    Thresholds v1 — heurísticos para o MVP, devem ser calibrados
-    com dados históricos na Fase 2.
-      >= 0.35 → alto
-      >= 0.15 → moderado
-       < 0.15 → baixo
+    Classifica municípios em alto/moderado/baixo com base nos
+    percentis 85 e 70 do risk_score desta competência.
+
+    Garante que ~15% dos municípios ficam em alto risco e ~15%
+    em moderado — ranking estável e comparável entre competências.
+
+    Percentis calculados sobre o conjunto scored (não histórico),
+    coerente com o target_definition_version=v2 que também usa p85.
+
+    risk_threshold_version = "v2"
     """
+    p85, p70 = df.approxQuantile("risk_score", [0.85, 0.70], 0.01)
+
+    print(f"  Thresholds de risco — p85={p85:.6f}  p70={p70:.6f}")
+
     return (
         df
         .withColumn(
             "risk_class",
-            F.when(F.col("risk_score") >= 0.35, F.lit("alto"))
-             .when(F.col("risk_score") >= 0.15, F.lit("moderado"))
+            F.when(F.col("risk_score") >= p85, F.lit("alto"))
+             .when(F.col("risk_score") >= p70, F.lit("moderado"))
              .otherwise(F.lit("baixo")),
         )
-        .withColumn("risk_threshold_version", F.lit("v1"))
+        .withColumn("risk_threshold_version", F.lit("v2"))
+        .withColumn("risk_p85",               F.lit(float(p85)))
+        .withColumn("risk_p70",               F.lit(float(p70)))
     )
 
 
@@ -337,6 +347,7 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         "municipio_id", "municipio_nome", "uf", "regiao",
         "competencia", "score_date",
         "risk_score", "risk_class", "risk_threshold_version",
+        "risk_p85", "risk_p70",
         "model_alias", "model_version", "model_type",
         "leitos_totais", "leitos_uti",
         "casos_por_leito", "casos_por_leito_lag1",
