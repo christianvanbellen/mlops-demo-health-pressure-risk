@@ -130,21 +130,8 @@ def _carregar_atual(spark: SparkSession) -> tuple[pd.DataFrame, str]:
 # ── cálculo de drift ─────────────────────────────────────────────
 def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> dict:
     """
-    Executa o Evidently Report com DataDriftPreset(method="psi")
-    comparando ref_df (referência) com cur_df (atual).
-
-    Retorna dict com resultado por feature:
-      {
-        "feature_name": {
-          "drift_detected": bool,
-          "drift_score": float,   # PSI score
-          "stattest": str,        # método usado
-        },
-        ...
-      }
-
-    Evidently 0.7.x não suporta exportação HTML via Report.
-    O JSON summary é logado como substituto.
+    Executa Evidently Report com DataDriftPreset e extrai PSI por feature.
+    Compatível com Evidently 0.7.x.
     """
     report = Report([DataDriftPreset(method="psi")])
     report.run(
@@ -152,21 +139,23 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
         current_data=cur_df[FEATURE_COLS],
     )
 
-    # Evidently 0.7.x não suporta exportação HTML via Report
-    # Logamos o JSON summary como substituto
-    html_path = None  # sem HTML nessa versão
-
-    # extrai métricas por feature — estrutura Evidently 0.7.x
-    result = report.as_dict()
     drift_por_feature = {}
 
-    try:
-        metrics = result.get("metrics", [])
-        for metric in metrics:
-            res = metric.get("result", {})
+    # Evidently 0.7.x: report.metrics é iterável de objetos com .dict()
+    for metric_result in report.metrics:
+        try:
+            # tenta serializar via dict() ou model_dump() (pydantic v1/v2)
+            if hasattr(metric_result, "model_dump"):
+                data = metric_result.model_dump()
+            elif hasattr(metric_result, "dict"):
+                data = metric_result.dict()
+            else:
+                continue
 
-            # tenta drift_by_columns (estrutura mais comum)
-            drift_cols = res.get("drift_by_columns", {})
+            # navega pela estrutura para encontrar drift_by_columns
+            result = data.get("value", data.get("result", {}))
+            drift_cols = result.get("drift_by_columns", {})
+
             for col, stats in drift_cols.items():
                 if col in FEATURE_COLS:
                     drift_por_feature[col] = {
@@ -174,8 +163,36 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
                         "drift_score": float(stats.get("drift_score", 0.0)),
                         "stattest": str(stats.get("stattest_name", stats.get("stattest", "psi"))),
                     }
-    except Exception as e:
-        print(f"  ⚠ Erro ao extrair métricas: {e}")
+        except Exception:
+            continue
+
+    # se ainda não extraiu nada, tenta via report.items()
+    if not drift_por_feature:
+        try:
+            for snapshot in report.items():
+                if hasattr(snapshot, "value"):
+                    val = snapshot.value
+                    if hasattr(val, "drift_by_columns"):
+                        for col, stats in val.drift_by_columns.items():
+                            if col in FEATURE_COLS:
+                                drift_por_feature[col] = {
+                                    "drift_detected": bool(getattr(stats, "drift_detected", False)),
+                                    "drift_score": float(getattr(stats, "drift_score", 0.0)),
+                                    "stattest": str(getattr(stats, "stattest_name", "psi")),
+                                }
+        except Exception:
+            pass
+
+    # debug se ainda vazio
+    if not drift_por_feature:
+        print("  ⚠ Não foi possível extrair métricas. Inspecionando report.metrics:")
+        for i, m in enumerate(report.metrics):
+            print(f"  metric[{i}] type: {type(m).__name__}")
+            if hasattr(m, "__dict__"):
+                keys = list(vars(m).keys())[:5]
+                print(f"    attrs: {keys}")
+            if i >= 2:
+                break
 
     # fallback: preenche features não encontradas com zeros
     for feat in FEATURE_COLS:
@@ -186,16 +203,10 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
                 "stattest": "psi",
             }
 
-    # debug se nenhuma feature foi extraída com score > 0
     n_extraidas = sum(1 for v in drift_por_feature.values() if v["drift_score"] > 0)
-    if n_extraidas == 0:
-        import json as _json
+    print(f"  Métricas extraídas: {n_extraidas}/{len(FEATURE_COLS)} features com PSI > 0")
 
-        print("  ⚠ Nenhuma métrica extraída — dump parcial do result:")
-        for m in result.get("metrics", [])[:1]:
-            print(_json.dumps(m, indent=2, default=str)[:1000])
-
-    return drift_por_feature, html_path
+    return drift_por_feature
 
 
 # ── gráfico resumo ────────────────────────────────────────────────
@@ -292,7 +303,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
     print(f"\n  Calculando drift PSI ({len(FEATURE_COLS)} features)...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        drift_results, html_path = _calcular_drift(ref_df, cur_df, tmpdir)
+        drift_results = _calcular_drift(ref_df, cur_df, tmpdir)
         _plot_drift_summary(drift_results, competencia_atual, tmpdir)
 
         # ── classifica severidade ────────────────────────────────
