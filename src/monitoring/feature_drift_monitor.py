@@ -153,21 +153,43 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
 
     # salva HTML para artefato MLflow
     html_path = os.path.join(tmpdir, "feature_drift_report.html")
-    report.save_html(html_path)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(report.get_html())
 
-    # extrai métricas por feature
+    # extrai métricas por feature — tenta múltiplas estruturas entre versões
     result = report.as_dict()
     drift_por_feature = {}
 
     for metric in result.get("metrics", []):
-        # DataDriftPreset expõe "DataDriftTable" com resultados por coluna
-        if metric.get("metric") == "DataDriftTable":
-            for col, stats in metric.get("result", {}).get("drift_by_columns", {}).items():
+        metric_id = metric.get("metric", "")
+
+        # estrutura 1: DataDriftTable (agrupa todas as colunas)
+        if "DataDriftTable" in metric_id:
+            cols = metric.get("result", {}).get("drift_by_columns", {})
+            for col, stats in cols.items():
                 drift_por_feature[col] = {
                     "drift_detected": bool(stats.get("drift_detected", False)),
                     "drift_score": float(stats.get("drift_score", 0.0)),
                     "stattest": str(stats.get("stattest", "psi")),
                 }
+
+        # estrutura 2: ColumnDriftMetric (uma entrada por coluna)
+        elif "ColumnDriftMetric" in metric_id:
+            col = metric.get("result", {}).get("column_name", "")
+            stat = metric.get("result", {})
+            if col:
+                drift_por_feature[col] = {
+                    "drift_detected": bool(stat.get("drift_detected", False)),
+                    "drift_score": float(stat.get("drift_score", 0.0)),
+                    "stattest": str(stat.get("stattest_name", "psi")),
+                }
+
+    # fallback: estrutura não reconhecida — loga dump parcial para debug
+    if not drift_por_feature:
+        import json as _json
+
+        print("  ⚠ Estrutura do Report não reconhecida. Dump parcial:")
+        print(_json.dumps(result.get("metrics", [])[:2], indent=2, default=str))
 
     return drift_por_feature
 
