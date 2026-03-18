@@ -29,7 +29,7 @@ from pyspark.sql import functions as F
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_SRC = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
 TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
@@ -58,11 +58,11 @@ def _resolver_municipio_id(df):
       Para registros com CO_IBGE nulo, join pelo nome normalizado do município.
     """
     nulos_antes = df.filter(F.col("CO_IBGE").isNull()).count()
-    print(f"\n── Resolução de municipio_id ──")
+    print("\n── Resolução de municipio_id ──")
     print(f"  Registros com CO_IBGE nulo antes do lookup: {nulos_antes:,}")
 
     if nulos_antes == 0:
-        print(f"  Nenhum registro a resolver — pulando lookup.")
+        print("  Nenhum registro a resolver — pulando lookup.")
         return df
 
     # lookup: nome normalizado → CO_IBGE (apenas de registros com código já conhecido)
@@ -92,12 +92,12 @@ def _resolver_municipio_id(df):
     ).drop("_municipio_key", "_co_ibge_lookup")
 
     nulos_resolvidos = nulos_antes - df.filter(F.col("CO_IBGE").isNull()).count()
-    nulos_restantes  = df.filter(F.col("CO_IBGE").isNull()).count()
+    nulos_restantes = df.filter(F.col("CO_IBGE").isNull()).count()
     print(f"  Resolvidos pelo lookup: {nulos_resolvidos:,}")
     if nulos_restantes:
         print(f"  ⚠ Continuam nulos após lookup (município não encontrado): {nulos_restantes:,}")
     else:
-        print(f"  ✓ Todos os registros resolvidos.")
+        print("  ✓ Todos os registros resolvidos.")
     return df
 
 
@@ -111,7 +111,7 @@ def _cast_numerico(df):
             col,
             F.when(F.trim(F.col(col)) == "", F.lit(0))
             .otherwise(F.col(col).cast("integer"))
-            .cast("integer")  # garante int mesmo se o when retornar nulo
+            .cast("integer"),  # garante int mesmo se o when retornar nulo
         )
         # nulos remanescentes (ex: strings não numéricas) → 0
         df = df.withColumn(col, F.coalesce(F.col(col), F.lit(0)))
@@ -122,7 +122,9 @@ def _flag_hospital(df):
     """Marca 1 se DS_TIPO_UNIDADE contém 'HOSPITAL' (case insensitive)."""
     return df.withColumn(
         "is_hospital",
-        F.when(F.upper(F.col("DS_TIPO_UNIDADE")).contains("HOSPITAL"), F.lit(1)).otherwise(F.lit(0)),
+        F.when(F.upper(F.col("DS_TIPO_UNIDADE")).contains("HOSPITAL"), F.lit(1)).otherwise(
+            F.lit(0)
+        ),
     )
 
 
@@ -131,21 +133,21 @@ def _agregar(df):
     return (
         df.groupBy("CO_IBGE", "COMP")
         .agg(
-            F.first("MUNICIPIO",  ignorenulls=True).alias("municipio_nome"),
-            F.first("UF",         ignorenulls=True).alias("uf"),
-            F.first("REGIAO",     ignorenulls=True).alias("regiao"),
-            F.countDistinct("CNES")                .alias("num_estabelecimentos"),
-            F.sum("is_hospital")                   .alias("num_hospitais"),
-            F.sum("LEITOS_EXISTENTES")             .alias("leitos_totais"),
-            F.sum("LEITOS_SUS")                    .alias("leitos_sus"),
-            F.sum("UTI_TOTAL_EXIST")               .alias("leitos_uti"),
-            F.sum("UTI_TOTAL_SUS")                 .alias("leitos_uti_sus"),
-            F.sum("UTI_ADULTO_EXIST")              .alias("leitos_uti_adulto"),
-            F.sum("UTI_PEDIATRICO_EXIST")          .alias("leitos_uti_pediatrico"),
-            F.sum("UTI_NEONATAL_EXIST")            .alias("leitos_uti_neonatal"),
+            F.first("MUNICIPIO", ignorenulls=True).alias("municipio_nome"),
+            F.first("UF", ignorenulls=True).alias("uf"),
+            F.first("REGIAO", ignorenulls=True).alias("regiao"),
+            F.countDistinct("CNES").alias("num_estabelecimentos"),
+            F.sum("is_hospital").alias("num_hospitais"),
+            F.sum("LEITOS_EXISTENTES").alias("leitos_totais"),
+            F.sum("LEITOS_SUS").alias("leitos_sus"),
+            F.sum("UTI_TOTAL_EXIST").alias("leitos_uti"),
+            F.sum("UTI_TOTAL_SUS").alias("leitos_uti_sus"),
+            F.sum("UTI_ADULTO_EXIST").alias("leitos_uti_adulto"),
+            F.sum("UTI_PEDIATRICO_EXIST").alias("leitos_uti_pediatrico"),
+            F.sum("UTI_NEONATAL_EXIST").alias("leitos_uti_neonatal"),
         )
         .withColumnRenamed("CO_IBGE", "municipio_id")
-        .withColumnRenamed("COMP",    "competencia")
+        .withColumnRenamed("COMP", "competencia")
     )
 
 
@@ -155,7 +157,7 @@ def _validar_e_filtrar(df):
     Retorna o DataFrame limpo.
     """
     total = df.count()
-    print(f"\n── Validação de qualidade ──")
+    print("\n── Validação de qualidade ──")
     print(f"  Total antes da filtragem: {total:,}")
 
     # regra 1: municipio_id não nulo
@@ -177,10 +179,8 @@ def _validar_e_filtrar(df):
 
 def _adicionar_metadados(df):
     """Adiciona colunas de rastreabilidade do processamento."""
-    return (
-        df
-        .withColumn("_processed_at", F.current_timestamp())
-        .withColumn("_source_table", F.lit("bronze_hospitais_leitos"))
+    return df.withColumn("_processed_at", F.current_timestamp()).withColumn(
+        "_source_table", F.lit("bronze_hospitais_leitos")
     )
 
 
@@ -202,8 +202,7 @@ def transformar(spark: SparkSession):
     print(f"\nGravando em {TABLE_DST} ...")
     spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_DST} USING DELTA")
     (
-        df.write
-        .format("delta")
+        df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
         .saveAsTable(TABLE_DST)
@@ -229,8 +228,8 @@ def show_summary(spark: SparkSession):
         df.groupBy("competencia")
         .agg(
             F.count("municipio_id").alias("municipios"),
-            F.sum("leitos_totais") .alias("leitos_totais_br"),
-            F.sum("leitos_uti")    .alias("leitos_uti_br"),
+            F.sum("leitos_totais").alias("leitos_totais_br"),
+            F.sum("leitos_uti").alias("leitos_uti_br"),
         )
         .orderBy("competencia")
         .show(20, truncate=False)

@@ -75,26 +75,26 @@
 #
 # ──────────────────────────────────────────────────────────────
 
-import io
 import os
 import re
-import requests
 import zipfile
 from datetime import datetime
 from ftplib import FTP
+
+import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_ESTAB = f"{CATALOG}.{SCHEMA}.bronze_cnes_estabelecimentos"
 TABLE_LEITO = f"{CATALOG}.{SCHEMA}.bronze_cnes_leitos"
 
-LANDING      = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
-FTP_HOST     = "ftp.datasus.gov.br"
-FTP_DIR      = "/cnes/"
+LANDING = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
+FTP_HOST = "ftp.datasus.gov.br"
+FTP_DIR = "/cnes/"
 PAGINA_FONTE = "https://cnes.datasus.gov.br/pages/downloads/arquivosBaseDados.jsp"
 
 # Competências de fallback — uma por ano (a mais recente disponível em 2026-03).
@@ -116,26 +116,27 @@ ANOS = {
 
 # Mapeamento tbEstabelecimento: nome original → nome destino
 COLUNAS_MAPA_ESTAB = {
-    "CO_UNIDADE":          "cnes_id",
+    "CO_UNIDADE": "cnes_id",
     "CO_MUNICIPIO_GESTOR": "municipio_id",
-    "NO_FANTASIA":         "nome_estabelecimento",
-    "TP_UNIDADE":          "tipo_estabelecimento",
-    "TP_GESTAO":           "gestao",
-    "TP_PFPJ":             "natureza_juridica",
-    "CO_ESTADO_GESTOR":    "uf",
+    "NO_FANTASIA": "nome_estabelecimento",
+    "TP_UNIDADE": "tipo_estabelecimento",
+    "TP_GESTAO": "gestao",
+    "TP_PFPJ": "natureza_juridica",
+    "CO_ESTADO_GESTOR": "uf",
 }
 
 # Mapeamento tbLeito: nome original → nome destino
 COLUNAS_MAPA_LEITO = {
-    "CO_UNIDADE":          "cnes_id",
-    "CO_MUNICIPIO_GESTOR": "municipio_id",        # se existir
-    "CO_LEITO":            "leito_id",            # se existir
-    "QT_EXIST":            "leitos_existentes",
-    "QT_SUS":              "leitos_sus",
-    "TP_LEITO":            "tipo_leito",          # se existir
+    "CO_UNIDADE": "cnes_id",
+    "CO_MUNICIPIO_GESTOR": "municipio_id",  # se existir
+    "CO_LEITO": "leito_id",  # se existir
+    "QT_EXIST": "leitos_existentes",
+    "QT_SUS": "leitos_sus",
+    "TP_LEITO": "tipo_leito",  # se existir
 }
 
 MIN_LINHAS_VALIDAS = 1_000
+
 
 # ── funções ─────────────────────────────────────────────────────
 def _nome_zip(competencia: str) -> str:
@@ -155,14 +156,14 @@ def _listar_competencias_ftp() -> dict:
     arquivos = ftp.nlst()
     ftp.quit()
 
-    padrao    = re.compile(r"BASE_DE_DADOS_CNES_(\d{6})\.ZIP", re.IGNORECASE)
+    padrao = re.compile(r"BASE_DE_DADOS_CNES_(\d{6})\.ZIP", re.IGNORECASE)
     resultado = {}
     for nome in arquivos:
         m = padrao.match(nome)
         if not m:
             continue
         comp = m.group(1)
-        ano  = int(comp[:4])
+        ano = int(comp[:4])
         # mantém a competência mais recente de cada ano
         if ano not in resultado or comp > resultado[ano]:
             resultado[ano] = comp
@@ -184,7 +185,7 @@ def scrape_urls() -> dict:
         return resultado
     except Exception as e:
         print(f"  ⚠ Falha na listagem FTP ({type(e).__name__}: {e})")
-        print(f"  → Usando competências de fallback hardcoded (atualizadas em 2026-03).")
+        print("  → Usando competências de fallback hardcoded (atualizadas em 2026-03).")
         return COMPETENCIAS_FALLBACK
 
 
@@ -197,9 +198,9 @@ def baixar_e_extrair(competencia: str) -> tuple:
     Tenta ftplib primeiro; se falhar, tenta ftp:// via requests.
     Retorna (caminho_estab, caminho_leito, url_usada).
     """
-    nome_zip    = _nome_zip(competencia)
+    nome_zip = _nome_zip(competencia)
     caminho_zip = f"{LANDING}/cnes_{competencia}.zip"
-    url_ftp     = f"ftp://{FTP_HOST}{FTP_DIR}{nome_zip}"
+    url_ftp = f"ftp://{FTP_HOST}{FTP_DIR}{nome_zip}"
 
     # tentativa 1: ftplib (mais confiável em ambientes sem proxy HTTP)
     try:
@@ -210,7 +211,7 @@ def baixar_e_extrair(competencia: str) -> tuple:
         with open(caminho_zip, "wb") as f:
             ftp.retrbinary(f"RETR {nome_zip}", f.write)
         ftp.quit()
-        print(f"  ✓ {os.path.getsize(caminho_zip)/1e6:.1f} MB salvo em {caminho_zip}")
+        print(f"  ✓ {os.path.getsize(caminho_zip) / 1e6:.1f} MB salvo em {caminho_zip}")
 
     except Exception as e:
         print(f"  ⚠ ftplib falhou ({type(e).__name__}: {e}) — tentando requests ftp://...")
@@ -218,7 +219,7 @@ def baixar_e_extrair(competencia: str) -> tuple:
         r.raise_for_status()
         with open(caminho_zip, "wb") as f:
             f.write(r.content)
-        print(f"  ✓ {len(r.content)/1e6:.1f} MB salvo em {caminho_zip} (via requests ftp://)")
+        print(f"  ✓ {len(r.content) / 1e6:.1f} MB salvo em {caminho_zip} (via requests ftp://)")
 
     # extração dos dois CSVs relevantes
     nome_estab = f"tbEstabelecimento{competencia}.csv"
@@ -234,20 +235,24 @@ def baixar_e_extrair(competencia: str) -> tuple:
         mapa = {n.lower(): n for n in arquivos_zip}
 
         if nome_estab.lower() not in mapa:
-            raise ValueError(f"Arquivo {nome_estab} não encontrado no ZIP. Disponíveis: {arquivos_zip}")
+            raise ValueError(
+                f"Arquivo {nome_estab} não encontrado no ZIP. Disponíveis: {arquivos_zip}"
+            )
         with zf.open(mapa[nome_estab.lower()]) as src, open(caminho_estab, "wb") as dst:
             dst.write(src.read())
         print(f"  ✓ Extraído: {nome_estab}")
 
         if nome_leito.lower() not in mapa:
-            raise ValueError(f"Arquivo {nome_leito} não encontrado no ZIP. Disponíveis: {arquivos_zip}")
+            raise ValueError(
+                f"Arquivo {nome_leito} não encontrado no ZIP. Disponíveis: {arquivos_zip}"
+            )
         with zf.open(mapa[nome_leito.lower()]) as src, open(caminho_leito, "wb") as dst:
             dst.write(src.read())
         print(f"  ✓ Extraído: {nome_leito}")
 
     # deleta o ZIP — CSVs extraídos serão deletados após gravação
     os.remove(caminho_zip)
-    print(f"  ✓ ZIP removido do landing")
+    print("  ✓ ZIP removido do landing")
 
     return caminho_estab, caminho_leito, url_ftp
 
@@ -255,21 +260,21 @@ def baixar_e_extrair(competencia: str) -> tuple:
 def _adicionar_metadados(df, ano: int, competencia: str, is_live: bool, url: str):
     """Adiciona as colunas de metadados padrão do projeto."""
     return (
-        df
-        .withColumn("_ano_arquivo",   F.lit(ano))
-        .withColumn("_competencia",   F.lit(competencia))      # AAAAMM — útil no silver para join temporal de capacidade
-        .withColumn("_is_live",       F.lit(is_live))
+        df.withColumn("_ano_arquivo", F.lit(ano))
+        .withColumn(
+            "_competencia", F.lit(competencia)
+        )  # AAAAMM — útil no silver para join temporal de capacidade
+        .withColumn("_is_live", F.lit(is_live))
         .withColumn("_snapshot_date", F.lit(datetime.today().strftime("%Y-%m-%d")))
-        .withColumn("_source_url",    F.lit(url))
-        .withColumn("_ingestion_ts",  F.current_timestamp())
+        .withColumn("_source_url", F.lit(url))
+        .withColumn("_ingestion_ts", F.current_timestamp())
     )
 
 
 def _ler_csv(spark: SparkSession, caminho: str) -> object:
     """Lê um CSV do CNES (sep=";", latin1) e casteia tudo para string."""
     df = (
-        spark.read
-        .option("header", "true")
+        spark.read.option("header", "true")
         .option("sep", ";")
         .option("encoding", "latin1")
         .option("inferSchema", "false")
@@ -279,7 +284,9 @@ def _ler_csv(spark: SparkSession, caminho: str) -> object:
     return df.select([F.col(c).cast("string").alias(c) for c in df.columns])
 
 
-def ler_e_enriquecer_estab(spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, competencia: str):
+def ler_e_enriquecer_estab(
+    spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, competencia: str
+):
     """Lê tbEstabelecimento, renomeia colunas e adiciona metadados."""
     df = _ler_csv(spark, caminho)
 
@@ -290,8 +297,10 @@ def ler_e_enriquecer_estab(spark: SparkSession, caminho: str, ano: int, url: str
             f"esperado >= {MIN_LINHAS_VALIDAS:,}. URL: {url}"
         )
 
-    colunas_presentes = {orig: dest for orig, dest in COLUNAS_MAPA_ESTAB.items() if orig in df.columns}
-    colunas_faltando  = [orig for orig in COLUNAS_MAPA_ESTAB if orig not in df.columns]
+    colunas_presentes = {
+        orig: dest for orig, dest in COLUNAS_MAPA_ESTAB.items() if orig in df.columns
+    }
+    colunas_faltando = [orig for orig in COLUNAS_MAPA_ESTAB if orig not in df.columns]
     if colunas_faltando:
         print(f"  ⚠ tbEstabelecimento — colunas ausentes em {competencia}: {colunas_faltando}")
 
@@ -299,7 +308,9 @@ def ler_e_enriquecer_estab(spark: SparkSession, caminho: str, ano: int, url: str
     return _adicionar_metadados(df, ano, competencia, is_live, url)
 
 
-def ler_e_enriquecer_leito(spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, competencia: str):
+def ler_e_enriquecer_leito(
+    spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, competencia: str
+):
     """Lê tbLeito, renomeia colunas e adiciona metadados."""
     df = _ler_csv(spark, caminho)
 
@@ -310,8 +321,10 @@ def ler_e_enriquecer_leito(spark: SparkSession, caminho: str, ano: int, url: str
             f"esperado >= {MIN_LINHAS_VALIDAS:,}. URL: {url}"
         )
 
-    colunas_presentes = {orig: dest for orig, dest in COLUNAS_MAPA_LEITO.items() if orig in df.columns}
-    colunas_faltando  = [orig for orig in COLUNAS_MAPA_LEITO if orig not in df.columns]
+    colunas_presentes = {
+        orig: dest for orig, dest in COLUNAS_MAPA_LEITO.items() if orig in df.columns
+    }
+    colunas_faltando = [orig for orig in COLUNAS_MAPA_LEITO if orig not in df.columns]
     if colunas_faltando:
         print(f"  ⚠ tbLeito — colunas ausentes em {competencia}: {colunas_faltando}")
 
@@ -331,12 +344,12 @@ def inspecionar_colunas(spark: SparkSession, competencia: str):
 
     try:
         for label, caminho in [("tbEstabelecimento", caminho_estab), ("tbLeito", caminho_leito)]:
-            print(f"\n{'─'*60}")
+            print(f"\n{'─' * 60}")
             print(f"  {label}{competencia}.csv")
-            print(f"{'─'*60}")
+            print(f"{'─' * 60}")
             df = _ler_csv(spark, caminho)
             df.printSchema()
-            print(f"  Primeiras 5 linhas:")
+            print("  Primeiras 5 linhas:")
             df.show(5, truncate=False)
     finally:
         # limpa os CSVs extraídos — inspeção não deixa rastro no landing
@@ -345,7 +358,7 @@ def inspecionar_colunas(spark: SparkSession, competencia: str):
                 os.remove(caminho)
             except OSError:
                 pass
-        print(f"\n  ✓ CSVs de inspeção removidos do landing")
+        print("\n  ✓ CSVs de inspeção removidos do landing")
 
 
 def _gravar_tabela(spark: SparkSession, df, table: str, ano: int):
@@ -353,7 +366,9 @@ def _gravar_tabela(spark: SparkSession, df, table: str, ano: int):
     try:
         spark.sql(f"DELETE FROM {table} WHERE CAST(_ano_arquivo AS INT) = {ano}")
     except Exception as e:
-        print(f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado.")
+        print(
+            f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
+        )
     df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(table)
     print(f"  ✓ Gravado em {table}")
 
@@ -388,12 +403,16 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
 
         try:
             # ── tbEstabelecimento ──
-            df_estab = ler_e_enriquecer_estab(spark, caminho_estab, ano, url, config["is_live"], competencia)
+            df_estab = ler_e_enriquecer_estab(
+                spark, caminho_estab, ano, url, config["is_live"], competencia
+            )
             print(f"  Estabelecimentos lidos: {df_estab.count():,}")
             _gravar_tabela(spark, df_estab, TABLE_ESTAB, ano)
 
             # ── tbLeito ──
-            df_leito = ler_e_enriquecer_leito(spark, caminho_leito, ano, url, config["is_live"], competencia)
+            df_leito = ler_e_enriquecer_leito(
+                spark, caminho_leito, ano, url, config["is_live"], competencia
+            )
             print(f"  Leitos lidos: {df_leito.count():,}")
             _gravar_tabela(spark, df_leito, TABLE_LEITO, ano)
 
@@ -404,7 +423,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
                     os.remove(caminho)
                 except OSError:
                     pass
-            print(f"  ✓ CSVs extraídos removidos do landing")
+            print("  ✓ CSVs extraídos removidos do landing")
 
     print("\n✓ Ingestão CNES concluída.")
 
@@ -432,6 +451,7 @@ def show_summary(spark: SparkSession):
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
-    spark       = SparkSession.builder.getOrCreate()
+
+    spark = SparkSession.builder.getOrCreate()
     apenas_live = "--live" in sys.argv
     gravar_bronze(spark, apenas_live=apenas_live)

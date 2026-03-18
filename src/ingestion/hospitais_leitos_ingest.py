@@ -4,15 +4,16 @@
 
 import io
 import zipfile
-import requests
 from datetime import datetime
+
+import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
-TABLE   = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
+SCHEMA = "dev_christian_van_bellen"
+TABLE = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
 
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos"
 
@@ -20,20 +21,22 @@ PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos"
 # 2023–2024: CSV direto (Leitos_{ANO}.csv)
 # 2025–2026: CSV compactado em zip (Leitos_csv_{ANO}.zip)
 URL_BASE_CSV = "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/Leitos_SUS/Leitos_{ano}.csv"
-URL_BASE_ZIP = "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/Leitos_SUS/Leitos_csv_{ano}.zip"
+URL_BASE_ZIP = (
+    "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/Leitos_SUS/Leitos_csv_{ano}.zip"
+)
 
 ANOS = {
     2023: {"formato": "csv", "sep": ",", "zip": False, "is_live": False},
     2024: {"formato": "csv", "sep": ",", "zip": False, "is_live": False},
-    2025: {"formato": "csv", "sep": ";", "zip": True,  "is_live": True},
-    2026: {"formato": "csv", "sep": ";", "zip": True,  "is_live": True},
+    2025: {"formato": "csv", "sep": ";", "zip": True, "is_live": True},
+    2026: {"formato": "csv", "sep": ";", "zip": True, "is_live": True},
 }
 
 COLUNAS_ESSENCIAIS = [
     "COMP",
     "REGIAO",
     "UF",
-    "MUNICIPIO",           # nome do município — sem código IBGE nesta fonte
+    "MUNICIPIO",  # nome do município — sem código IBGE nesta fonte
     "CNES",
     "NOME_ESTABELECIMENTO",
     "TP_GESTAO",
@@ -51,7 +54,7 @@ COLUNAS_ESSENCIAIS = [
     "UTI_PEDIATRICO_SUS",
     "UTI_NEONATAL_EXIST",
     "UTI_NEONATAL_SUS",
-    "CO_IBGE",             # disponível em 2025/2026; ausente em 2023/2024 — tratado pelo filtro de colunas presentes
+    "CO_IBGE",  # disponível em 2025/2026; ausente em 2023/2024 — tratado pelo filtro de colunas presentes
     # Nota: 2023/2024 não contém código IBGE (apenas nome do município).
     # O join com municipio_id (IBGE 6 dígitos) será feito na camada silver:
     # - 2025/2026: via CO_IBGE diretamente
@@ -59,6 +62,7 @@ COLUNAS_ESSENCIAIS = [
 ]
 
 MIN_LINHAS_VALIDAS = 1_000
+
 
 # ── funções ─────────────────────────────────────────────────────
 def scrape_urls() -> dict:
@@ -87,7 +91,7 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
     print(f"  Baixando {ano} ({'zip' if is_zip else fmt}) de {url} ...")
     r = requests.get(url, timeout=300)
     r.raise_for_status()
-    print(f"  ✓ {len(r.content)/1e6:.1f} MB recebidos")
+    print(f"  ✓ {len(r.content) / 1e6:.1f} MB recebidos")
 
     if is_zip:
         with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
@@ -95,7 +99,7 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
             if not csvs:
                 raise ValueError(f"Nenhum CSV encontrado no zip de {ano}: {zf.namelist()}")
             nome_csv = csvs[0]
-            caminho  = f"{LANDING}/hospitais_leitos_{ano}.csv"
+            caminho = f"{LANDING}/hospitais_leitos_{ano}.csv"
             with zf.open(nome_csv) as src, open(caminho, "wb") as dst:
                 dst.write(src.read())
             print(f"  ✓ CSV extraído: {nome_csv} → {caminho}")
@@ -108,11 +112,12 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
     return caminho
 
 
-def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, sep: str):
+def ler_e_enriquecer(
+    spark: SparkSession, caminho: str, ano: int, url: str, is_live: bool, sep: str
+):
     """Lê o arquivo, seleciona colunas essenciais e adiciona metadados de ingestão."""
     df = (
-        spark.read
-        .option("header", "true")
+        spark.read.option("header", "true")
         .option("sep", sep)
         .option("encoding", "latin1")
         .option("inferSchema", "false")
@@ -133,7 +138,7 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
 
     # seleciona colunas disponíveis
     colunas_presentes = [c for c in COLUNAS_ESSENCIAIS if c in df.columns]
-    colunas_faltando  = [c for c in COLUNAS_ESSENCIAIS if c not in df.columns]
+    colunas_faltando = [c for c in COLUNAS_ESSENCIAIS if c not in df.columns]
     if colunas_faltando:
         print(f"  ⚠ Colunas ausentes em {ano}: {colunas_faltando}")
 
@@ -141,12 +146,11 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
 
     # metadados de ingestão
     df = (
-        df
-        .withColumn("_ano_arquivo",   F.lit(ano))
-        .withColumn("_is_live",       F.lit(is_live))
+        df.withColumn("_ano_arquivo", F.lit(ano))
+        .withColumn("_is_live", F.lit(is_live))
         .withColumn("_snapshot_date", F.lit(datetime.today().strftime("%Y-%m-%d")))
-        .withColumn("_source_url",    F.lit(url))
-        .withColumn("_ingestion_ts",  F.current_timestamp())
+        .withColumn("_source_url", F.lit(url))
+        .withColumn("_ingestion_ts", F.current_timestamp())
     )
     return df
 
@@ -178,7 +182,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         status = "live" if config["is_live"] else "congelado"
         print(f"\n── Hospitais e Leitos {ano} ({status}) ──")
         caminho = baixar_arquivo(url, ano, fmt, config["zip"])
-        df      = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"], config["sep"])
+        df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"], config["sep"])
 
         print(f"  Linhas lidas: {df.count():,}")
 
@@ -186,7 +190,9 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         try:
             spark.sql(f"DELETE FROM {TABLE} WHERE CAST(_ano_arquivo AS INT) = {ano}")
         except Exception as e:
-            print(f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado.")
+            print(
+                f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
+            )
         df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(TABLE)
         print(f"  ✓ Gravado em {TABLE}")
 
@@ -219,6 +225,7 @@ def show_summary(spark: SparkSession):
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
-    spark       = SparkSession.builder.getOrCreate()
+
+    spark = SparkSession.builder.getOrCreate()
     apenas_live = "--live" in sys.argv
     gravar_bronze(spark, apenas_live=apenas_live)

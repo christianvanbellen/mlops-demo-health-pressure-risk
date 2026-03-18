@@ -3,30 +3,39 @@
 # Fonte: https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026
 
 import re
-import requests
 from datetime import datetime
+
+import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
-TABLE   = f"{CATALOG}.{SCHEMA}.bronze_srag"
+SCHEMA = "dev_christian_van_bellen"
+TABLE = f"{CATALOG}.{SCHEMA}.bronze_srag"
 
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026"
 
 # URLs de fallback — atualizadas em 2026-03
 # Usar quando o scraping da página falhar
 URLS_FALLBACK = {
-    2023: {"csv":     "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2023/INFLUD23-01-04-2024.csv"},
-    2024: {"csv":     "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2024/INFLUD24-30-12-2024.csv"},
-    2025: {"parquet": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2025/INFLUD25-24-02-2025.parquet"},
-    2026: {"parquet": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2026/INFLUD26-03-03-2026.parquet"},
+    2023: {
+        "csv": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2023/INFLUD23-01-04-2024.csv"
+    },
+    2024: {
+        "csv": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2024/INFLUD24-30-12-2024.csv"
+    },
+    2025: {
+        "parquet": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2025/INFLUD25-24-02-2025.parquet"
+    },
+    2026: {
+        "parquet": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SRAG/2026/INFLUD26-03-03-2026.parquet"
+    },
 }
 
 ANOS = {
-    2023: {"formato": "csv",     "is_live": False},
-    2024: {"formato": "csv",     "is_live": False},
+    2023: {"formato": "csv", "is_live": False},
+    2024: {"formato": "csv", "is_live": False},
     2025: {"formato": "parquet", "is_live": True},
     2026: {"formato": "parquet", "is_live": True},
 }
@@ -49,6 +58,7 @@ COLUNAS_ESSENCIAIS = [
 
 MIN_LINHAS_VALIDAS = 1_000
 
+
 # ── funções ─────────────────────────────────────────────────────
 def scrape_urls() -> dict:
     """
@@ -61,26 +71,28 @@ def scrape_urls() -> dict:
         r = requests.get(PAGINA_FONTE, timeout=15)
         r.raise_for_status()
         links = re.findall(
-            r'https://s3\.sa-east-1\.amazonaws\.com/ckan\.saude\.gov\.br/SRAG/\d{4}/INFLUD\d{2}-[\d-]+\.\w+',
-            r.text
+            r"https://s3\.sa-east-1\.amazonaws\.com/ckan\.saude\.gov\.br/SRAG/\d{4}/INFLUD\d{2}-[\d-]+\.\w+",
+            r.text,
         )
         resultado = {}
         for link in set(links):
             partes = link.split("/")
-            ano    = int(partes[-2])
-            fmt    = link.split(".")[-1]
+            ano = int(partes[-2])
+            fmt = link.split(".")[-1]
             if ano not in resultado:
                 resultado[ano] = {}
             resultado[ano][fmt] = link
 
         if not resultado:
-            raise ValueError("Nenhuma URL encontrada na página — possível mudança de estrutura HTML.")
+            raise ValueError(
+                "Nenhuma URL encontrada na página — possível mudança de estrutura HTML."
+            )
 
         return resultado
 
     except Exception as e:
         print(f"  ⚠ Falha no scraping da página ({type(e).__name__}: {e})")
-        print(f"  → Usando URLs de fallback hardcoded (atualizadas em 2026-03).")
+        print("  → Usando URLs de fallback hardcoded (atualizadas em 2026-03).")
         return URLS_FALLBACK
 
 
@@ -92,7 +104,7 @@ def baixar_arquivo(url: str, ano: int, fmt: str) -> str:
     r.raise_for_status()
     with open(caminho, "wb") as f:
         f.write(r.content)
-    print(f"  ✓ {len(r.content)/1e6:.1f} MB salvo em {caminho}")
+    print(f"  ✓ {len(r.content) / 1e6:.1f} MB salvo em {caminho}")
     return caminho
 
 
@@ -102,8 +114,7 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
 
     if fmt == "csv":
         df = (
-            spark.read
-            .option("header", "true")
+            spark.read.option("header", "true")
             .option("sep", ";")
             .option("encoding", "latin1")
             .option("inferSchema", "false")
@@ -126,7 +137,7 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
 
     # seleciona colunas disponíveis
     colunas_presentes = [c for c in COLUNAS_ESSENCIAIS if c in df.columns]
-    colunas_faltando  = [c for c in COLUNAS_ESSENCIAIS if c not in df.columns]
+    colunas_faltando = [c for c in COLUNAS_ESSENCIAIS if c not in df.columns]
     if colunas_faltando:
         print(f"  ⚠ Colunas ausentes em {ano}: {colunas_faltando}")
 
@@ -134,12 +145,11 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
 
     # metadados de ingestão
     df = (
-        df
-        .withColumn("_ano_arquivo",      F.lit(ano))
-        .withColumn("_is_live",          F.lit(is_live))
-        .withColumn("_snapshot_date",    F.lit(datetime.today().strftime("%Y-%m-%d")))
-        .withColumn("_source_url",       F.lit(url))
-        .withColumn("_ingestion_ts",     F.current_timestamp())
+        df.withColumn("_ano_arquivo", F.lit(ano))
+        .withColumn("_is_live", F.lit(is_live))
+        .withColumn("_snapshot_date", F.lit(datetime.today().strftime("%Y-%m-%d")))
+        .withColumn("_source_url", F.lit(url))
+        .withColumn("_ingestion_ts", F.current_timestamp())
     )
     return df
 
@@ -170,7 +180,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
 
         print(f"\n── SRAG {ano} ({'live' if config['is_live'] else 'congelado'}) ──")
         caminho = baixar_arquivo(url, ano, fmt)
-        df      = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"])
+        df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"])
 
         print(f"  Linhas lidas: {df.count():,}")
 
@@ -178,7 +188,9 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         try:
             spark.sql(f"DELETE FROM {TABLE} WHERE CAST(_ano_arquivo AS INT) = {ano}")
         except Exception as e:
-            print(f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado.")
+            print(
+                f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
+            )
         df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(TABLE)
         print(f"  ✓ Gravado em {TABLE}")
 
@@ -211,6 +223,7 @@ def show_summary(spark: SparkSession):
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
-    spark       = SparkSession.builder.getOrCreate()
+
+    spark = SparkSession.builder.getOrCreate()
     apenas_live = "--live" in sys.argv
     gravar_bronze(spark, apenas_live=apenas_live)

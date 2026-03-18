@@ -31,7 +31,7 @@ from pyspark.sql import functions as F
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_SRC = f"{CATALOG}.{SCHEMA}.bronze_srag"
 TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_srag_municipio_semana"
@@ -46,7 +46,7 @@ def _filtrar_hospitalizados(df):
     total = df.count()
     df_filtrado = df.filter(F.col("HOSPITAL") == "1")
     descartados = total - df_filtrado.count()
-    print(f"\n── Filtro HOSPITAL = 1 ──")
+    print("\n── Filtro HOSPITAL = 1 ──")
     print(f"  Total na bronze: {total:,}")
     print(f"  Descartados (HOSPITAL != '1' ou nulo): {descartados:,}")
     print(f"  Mantidos: {df_filtrado.count():,}")
@@ -64,9 +64,7 @@ def _filtrar_sem_pri_valido(df):
     ).count()
     if invalidos:
         print(f"  ⚠ Descartados por SEM_PRI nulo ou não numérico: {invalidos:,}")
-    df = df.filter(
-        F.col("SEM_PRI").isNotNull() & F.col("SEM_PRI").cast("integer").isNotNull()
-    )
+    df = df.filter(F.col("SEM_PRI").isNotNull() & F.col("SEM_PRI").cast("integer").isNotNull())
     print(f"  Mantidos após filtro SEM_PRI: {df.count():,}")
     return df
 
@@ -141,13 +139,13 @@ def _agregar(df):
     df_agg = (
         df.groupBy("CO_MUN_RES", "semana_epidemiologica")
         .agg(
-            F.first("competencia",  ignorenulls=True).alias("competencia"),
-            F.first("SG_UF_NOT",    ignorenulls=True).alias("uf"),
-            F.count("*")                             .alias("casos_srag"),
-            F.sum("UTI_flag")                        .alias("casos_uti"),
-            F.sum("OBITO_flag")                      .alias("casos_obito"),
-            F.sum("IDOSO_flag")                      .alias("casos_idosos"),
-            F.sum("PEDIATRICO_flag")                 .alias("casos_pediatricos"),
+            F.first("competencia", ignorenulls=True).alias("competencia"),
+            F.first("SG_UF_NOT", ignorenulls=True).alias("uf"),
+            F.count("*").alias("casos_srag"),
+            F.sum("UTI_flag").alias("casos_uti"),
+            F.sum("OBITO_flag").alias("casos_obito"),
+            F.sum("IDOSO_flag").alias("casos_idosos"),
+            F.sum("PEDIATRICO_flag").alias("casos_pediatricos"),
         )
         .withColumnRenamed("CO_MUN_RES", "municipio_id")
     )
@@ -171,7 +169,7 @@ def _validar_e_filtrar(df):
     Retorna o DataFrame limpo.
     """
     total = df.count()
-    print(f"\n── Validação de qualidade ──")
+    print("\n── Validação de qualidade ──")
     print(f"  Total antes da filtragem: {total:,}")
 
     # regra 1: municipio_id não nulo
@@ -187,11 +185,11 @@ def _validar_e_filtrar(df):
     df = df.filter(F.col("casos_srag") >= 1)
 
     # regra 3: semana_epidemiologica no formato AAAA-WW (4 dígitos, hífen, 2 dígitos)
-    formato_invalido = df.filter(
-        ~F.col("semana_epidemiologica").rlike(r"^\d{4}-\d{2}$")
-    ).count()
+    formato_invalido = df.filter(~F.col("semana_epidemiologica").rlike(r"^\d{4}-\d{2}$")).count()
     if formato_invalido:
-        print(f"  ⚠ Descartados por semana_epidemiologica fora do formato AAAA-WW: {formato_invalido:,}")
+        print(
+            f"  ⚠ Descartados por semana_epidemiologica fora do formato AAAA-WW: {formato_invalido:,}"
+        )
     df = df.filter(F.col("semana_epidemiologica").rlike(r"^\d{4}-\d{2}$"))
 
     total_apos = df.count()
@@ -201,10 +199,8 @@ def _validar_e_filtrar(df):
 
 def _adicionar_metadados(df):
     """Adiciona colunas de rastreabilidade do processamento."""
-    return (
-        df
-        .withColumn("_processed_at", F.current_timestamp())
-        .withColumn("_source_table", F.lit("bronze_srag"))
+    return df.withColumn("_processed_at", F.current_timestamp()).withColumn(
+        "_source_table", F.lit("bronze_srag")
     )
 
 
@@ -226,8 +222,7 @@ def transformar(spark: SparkSession):
     print(f"\nGravando em {TABLE_DST} ...")
     spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_DST} USING DELTA")
     (
-        df.write
-        .format("delta")
+        df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
         .saveAsTable(TABLE_DST)
@@ -254,8 +249,8 @@ def show_summary(spark: SparkSession):
         df.withColumn("ano", F.col("semana_epidemiologica").substr(1, 4))
         .groupBy("ano")
         .agg(
-            F.sum("casos_srag") .alias("casos_srag_total"),
-            F.sum("casos_uti")  .alias("casos_uti_total"),
+            F.sum("casos_srag").alias("casos_srag_total"),
+            F.sum("casos_uti").alias("casos_uti_total"),
             F.sum("casos_obito").alias("casos_obito_total"),
         )
         .orderBy("ano")

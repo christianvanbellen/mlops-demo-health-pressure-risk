@@ -10,25 +10,23 @@
 # - Loga decisão no MLflow com motivo e métricas de suporte
 # - Job precisa existir com nome RETRAIN_JOB_NAME para disparo automático
 
+import os
+from datetime import date
+
+import mlflow
+import pandas as pd
+import requests
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
-import requests
-import json
-import os
-import numpy as np
-import pandas as pd
-from datetime import date, datetime
-import mlflow
-from mlflow.tracking import MlflowClient
 
 # ── configuração ─────────────────────────────────────────────────
-CATALOG       = "ds_dev_db"
-SCHEMA        = "dev_christian_van_bellen"
+CATALOG = "ds_dev_db"
+SCHEMA = "dev_christian_van_bellen"
 TABLE_MONITOR = f"{CATALOG}.{SCHEMA}.monitoring_performance"
 
 # Regra de trigger: degradação confirmada
-PRECISION_K_THRESHOLD = 0.55   # mesmo threshold do monitor
-MIN_CONSECUTIVE_BELOW = 2      # competências consecutivas abaixo do threshold
+PRECISION_K_THRESHOLD = 0.55  # mesmo threshold do monitor
+MIN_CONSECUTIVE_BELOW = 2  # competências consecutivas abaixo do threshold
 
 # Databricks Jobs API
 RETRAIN_JOB_NAME = "job_health_pressure_retrain"  # nome do Job no workspace
@@ -46,16 +44,17 @@ def _carregar_historico_monitor(spark: SparkSession) -> pd.DataFrame:
 
     # deduplicar por competencia — pega o monitor mais recente
     w = Window.partitionBy("competencia").orderBy(F.col("monitor_date").desc())
-    df = (
-        df.withColumn("_rn", F.row_number().over(w))
-          .filter(F.col("_rn") == 1)
-          .drop("_rn")
-    )
+    df = df.withColumn("_rn", F.row_number().over(w)).filter(F.col("_rn") == 1).drop("_rn")
 
     return (
         df.select(
-            "competencia", "precision_at_k", "auc_pr",
-            "n_municipios", "consolidation_flag", "simulated", "monitor_date",
+            "competencia",
+            "precision_at_k",
+            "auc_pr",
+            "n_municipios",
+            "consolidation_flag",
+            "simulated",
+            "monitor_date",
         )
         .orderBy("competencia")
         .toPandas()
@@ -91,8 +90,7 @@ def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
         return {
             "trigger": False,
             "reason": (
-                f"Histórico insuficiente — {len(df)} competências, "
-                f"mínimo {MIN_CONSECUTIVE_BELOW}"
+                f"Histórico insuficiente — {len(df)} competências, mínimo {MIN_CONSECUTIVE_BELOW}"
             ),
             "precision_at_k_recente": None,
             "n_consecutivas_abaixo": 0,
@@ -176,13 +174,13 @@ def _get_credentials() -> tuple[str, str]:
       2. dbutils (disponível dentro do workspace)
     Retorna (host, token) ou ("", "") se nenhum disponível.
     """
-    host  = os.environ.get("DATABRICKS_HOST", "")
+    host = os.environ.get("DATABRICKS_HOST", "")
     token = os.environ.get("DATABRICKS_TOKEN", "")
 
     if not host or not token:
         try:
-            ctx   = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-            host  = host  or ctx.apiUrl().get()
+            ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+            host = host or ctx.apiUrl().get()
             token = token or ctx.apiToken().get()
         except Exception:
             pass
@@ -203,7 +201,7 @@ def _get_job_id(job_name: str) -> str | None:
         print("  ⚠ Credenciais Databricks não encontradas (DATABRICKS_HOST/TOKEN)")
         return None
 
-    url  = f"https://{host.rstrip('/')}/api/2.1/jobs/list"
+    url = f"https://{host.rstrip('/')}/api/2.1/jobs/list"
     resp = requests.get(
         url,
         headers={"Authorization": f"Bearer {token}"},
@@ -235,8 +233,8 @@ def _disparar_job(job_id: str, motivo: str) -> dict:
         "job_id": int(job_id),
         "job_parameters": {
             "trigger_reason": motivo,
-            "trigger_date":   str(date.today()),
-            "retrain_id":     f"auto_{date.today().strftime('%Y%m%d')}",
+            "trigger_date": str(date.today()),
+            "retrain_id": f"auto_{date.today().strftime('%Y%m%d')}",
         },
     }
 
@@ -244,7 +242,7 @@ def _disparar_job(job_id: str, motivo: str) -> dict:
         url,
         headers={
             "Authorization": f"Bearer {token}",
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
         },
         json=payload,
         timeout=30,
@@ -253,11 +251,11 @@ def _disparar_job(job_id: str, motivo: str) -> dict:
     run_id = resp.json().get("run_id")
 
     return {
-        "job_id":         job_id,
-        "run_id":         run_id,
-        "status":         "disparado",
+        "job_id": job_id,
+        "run_id": run_id,
+        "status": "disparado",
         "trigger_reason": motivo,
-        "trigger_date":   str(date.today()),
+        "trigger_date": str(date.today()),
     }
 
 
@@ -277,7 +275,7 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
       4. Loga decisão no MLflow
       5. Retorna resultado com status e rastreabilidade
     """
-    print(f"\n── Retrain Trigger ──")
+    print("\n── Retrain Trigger ──")
     print(f"  Data:    {date.today()}")
     print(f"  Dry run: {dry_run}")
 
@@ -292,7 +290,7 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
     # 2. avalia regra
     avaliacao = _avaliar_trigger(df_historico)
 
-    print(f"\n── Avaliação ──")
+    print("\n── Avaliação ──")
     print(f"  Trigger:           {avaliacao['trigger']}")
     print(f"  Motivo:            {avaliacao['reason']}")
     print(f"  Precision@K rec.:  {avaliacao.get('precision_at_k_recente', 'N/A')}")
@@ -303,7 +301,7 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
     job_result = None
     if avaliacao["trigger"]:
         if dry_run:
-            print(f"\n  [DRY RUN] Trigger acionado — Job NÃO disparado")
+            print("\n  [DRY RUN] Trigger acionado — Job NÃO disparado")
             print(f"  Job que seria disparado: {RETRAIN_JOB_NAME}")
             job_result = {"status": "dry_run", "job_name": RETRAIN_JOB_NAME}
         else:
@@ -312,32 +310,38 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
 
             if job_id is None:
                 print(f"  ⚠ Job '{RETRAIN_JOB_NAME}' não encontrado no workspace")
-                print(f"  → Trigger registrado mas Job não disparado")
-                print(f"  → Crie o Job no Databricks com esse nome para habilitar o disparo automático")
+                print("  → Trigger registrado mas Job não disparado")
+                print(
+                    "  → Crie o Job no Databricks com esse nome para habilitar o disparo automático"
+                )
                 job_result = {"status": "job_nao_encontrado", "job_name": RETRAIN_JOB_NAME}
             else:
                 print(f"  Job encontrado (id={job_id}) — disparando ...")
                 job_result = _disparar_job(job_id, avaliacao["reason"])
                 print(f"  ✓ Job disparado — run_id={job_result['run_id']}")
     else:
-        print(f"\n  ✓ Sem trigger — retraining não necessário")
+        print("\n  ✓ Sem trigger — retraining não necessário")
 
     # 4. loga decisão no MLflow
     EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
     mlflow.set_experiment(EXPERIMENT)
 
     with mlflow.start_run(run_name=f"retrain_trigger_{date.today()}") as run:
-        mlflow.log_params({
-            "threshold":        PRECISION_K_THRESHOLD,
-            "min_consecutivas": MIN_CONSECUTIVE_BELOW,
-            "dry_run":          dry_run,
-            "job_name":         RETRAIN_JOB_NAME,
-        })
-        mlflow.log_metrics({
-            "trigger_acionado":       float(avaliacao["trigger"]),
-            "n_consecutivas_abaixo":  float(avaliacao["n_consecutivas_abaixo"]),
-            "precision_at_k_recente": float(avaliacao.get("precision_at_k_recente") or 0),
-        })
+        mlflow.log_params(
+            {
+                "threshold": PRECISION_K_THRESHOLD,
+                "min_consecutivas": MIN_CONSECUTIVE_BELOW,
+                "dry_run": dry_run,
+                "job_name": RETRAIN_JOB_NAME,
+            }
+        )
+        mlflow.log_metrics(
+            {
+                "trigger_acionado": float(avaliacao["trigger"]),
+                "n_consecutivas_abaixo": float(avaliacao["n_consecutivas_abaixo"]),
+                "precision_at_k_recente": float(avaliacao.get("precision_at_k_recente") or 0),
+            }
+        )
         mlflow.set_tag("trigger_reason", avaliacao["reason"])
         mlflow.set_tag(
             "trigger_status",
@@ -346,14 +350,14 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
 
     # 5. retorna resultado
     resultado = {
-        "status":                 "acionado" if avaliacao["trigger"] else "ok",
-        "trigger":                avaliacao["trigger"],
-        "reason":                 avaliacao["reason"],
+        "status": "acionado" if avaliacao["trigger"] else "ok",
+        "trigger": avaliacao["trigger"],
+        "reason": avaliacao["reason"],
         "precision_at_k_recente": avaliacao.get("precision_at_k_recente"),
-        "n_consecutivas_abaixo":  avaliacao["n_consecutivas_abaixo"],
-        "dry_run":                dry_run,
-        "job_result":             job_result,
-        "mlflow_run_id":          run.info.run_id,
+        "n_consecutivas_abaixo": avaliacao["n_consecutivas_abaixo"],
+        "dry_run": dry_run,
+        "job_result": job_result,
+        "mlflow_run_id": run.info.run_id,
     }
 
     print(f"\n✓ Trigger run ID: {run.info.run_id}")
@@ -363,8 +367,9 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
-    spark     = SparkSession.builder.getOrCreate()
-    dry_run   = "--dry-run" in sys.argv
+
+    spark = SparkSession.builder.getOrCreate()
+    dry_run = "--dry-run" in sys.argv
     resultado = verificar_e_disparar(spark, dry_run=dry_run)
     print(f"\nTrigger: {resultado['trigger']}")
     print(f"Motivo:  {resultado['reason']}")

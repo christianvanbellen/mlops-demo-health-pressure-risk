@@ -17,64 +17,79 @@
 #   Val    : 202501 – 202506        (primeiro semestre 2025, usado no early stopping)
 #   Teste  : 202507+                (segundo semestre 2025 em diante)
 
+import os
+import tempfile
+
 import lightgbm as lgb
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.lightgbm
-from mlflow.models.signature import infer_signature
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import numpy as np
 import pandas as pd
-from sklearn.metrics import (
-    roc_curve, precision_recall_curve,
-    roc_auc_score, average_precision_score,
-)
+from mlflow.models.signature import infer_signature
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-import tempfile
-import os
+from sklearn.metrics import (
+    average_precision_score,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-MODEL_NAME     = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-EXPERIMENT     = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
+MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
+EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
 
 TARGET_COL = "target_alta_pressao"
 
 FEATURE_COLS = [
-    "casos_por_leito",      "casos_por_leito_lag1", "casos_por_leito_lag2",
-    "casos_por_leito_lag3", "casos_por_leito_ma2",  "casos_por_leito_ma3",
-    "casos_srag_lag1",      "casos_srag_lag2",
-    "obitos_por_leito",     "uti_por_leito_uti",    "share_idosos",
-    "growth_mom",           "growth_3m",            "acceleration",
-    "rolling_std_3m",       "leitos_totais",        "leitos_uti",
-    "num_hospitais",        "mes",                  "quarter",
-    "is_semester1",         "is_rainy_season",
+    "casos_por_leito",
+    "casos_por_leito_lag1",
+    "casos_por_leito_lag2",
+    "casos_por_leito_lag3",
+    "casos_por_leito_ma2",
+    "casos_por_leito_ma3",
+    "casos_srag_lag1",
+    "casos_srag_lag2",
+    "obitos_por_leito",
+    "uti_por_leito_uti",
+    "share_idosos",
+    "growth_mom",
+    "growth_3m",
+    "acceleration",
+    "rolling_std_3m",
+    "leitos_totais",
+    "leitos_uti",
+    "num_hospitais",
+    "mes",
+    "quarter",
+    "is_semester1",
+    "is_rainy_season",
 ]
 
-TRAIN_END  = "202412"
-VAL_END    = "202506"
+TRAIN_END = "202412"
+VAL_END = "202506"
 TEST_START = "202507"
 
 LGBM_PARAMS = {
-    "objective":         "binary",
-    "metric":            ["auc", "average_precision"],
-    "learning_rate":     0.05,
-    "num_leaves":        63,
-    "max_depth":         -1,
+    "objective": "binary",
+    "metric": ["auc", "average_precision"],
+    "learning_rate": 0.05,
+    "num_leaves": 63,
+    "max_depth": -1,
     "min_child_samples": 50,
-    "feature_fraction":  0.8,
-    "bagging_fraction":  0.8,
-    "bagging_freq":      5,
-    "scale_pos_weight":  5.5,   # ~negativos/positivos = 51462/9201
-    "verbose":           -1,
-    "random_state":      42,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 5,
+    "scale_pos_weight": 5.5,  # ~negativos/positivos = 51462/9201
+    "verbose": -1,
+    "random_state": 42,
 }
 NUM_BOOST_ROUND = 500
-EARLY_STOPPING  = 50
+EARLY_STOPPING = 50
 
 
 # ── funções ─────────────────────────────────────────────────────
@@ -92,11 +107,13 @@ def _carregar_dados(spark: SparkSession):
     df = df.withColumn(TARGET_COL, F.col(TARGET_COL).cast("double"))
     df = df.dropna(subset=FEATURE_COLS + [TARGET_COL])
 
-    total     = df.count()
+    total = df.count()
     positivos = df.filter(F.col(TARGET_COL) == 1.0).count()
     negativos = total - positivos
-    print(f"\n── Dados carregados ──")
-    print(f"  Total: {total:,}  |  Positivos: {positivos:,} ({positivos/total*100:.1f}%)  |  Negativos: {negativos:,}")
+    print("\n── Dados carregados ──")
+    print(
+        f"  Total: {total:,}  |  Positivos: {positivos:,} ({positivos / total * 100:.1f}%)  |  Negativos: {negativos:,}"
+    )
     return df
 
 
@@ -105,12 +122,12 @@ def _split_temporal(df):
     Divide o dataset por competencia (AAAAMM) — split temporal estrito.
     """
     train = df.filter(F.col("competencia") <= TRAIN_END)
-    val   = df.filter((F.col("competencia") > TRAIN_END) & (F.col("competencia") <= VAL_END))
-    test  = df.filter(F.col("competencia") > VAL_END)
+    val = df.filter((F.col("competencia") > TRAIN_END) & (F.col("competencia") <= VAL_END))
+    test = df.filter(F.col("competencia") > VAL_END)
 
-    print(f"\n── Split temporal ──")
+    print("\n── Split temporal ──")
     print(f"  Treino  (<=  {TRAIN_END}): {train.count():,}")
-    print(f"  Val     ({TRAIN_END[:4]}{int(TRAIN_END[4:])+1:02d}–{VAL_END}): {val.count():,}")
+    print(f"  Val     ({TRAIN_END[:4]}{int(TRAIN_END[4:]) + 1:02d}–{VAL_END}): {val.count():,}")
     print(f"  Teste   (>= {TEST_START}): {test.count():,}")
     return train, val, test
 
@@ -123,10 +140,10 @@ def _para_pandas(train_sp, val_sp, test_sp):
     print("\nConvertendo splits para pandas ...")
     X_train = train_sp.select(FEATURE_COLS).toPandas()
     y_train = train_sp.select(TARGET_COL).toPandas()[TARGET_COL]
-    X_val   = val_sp.select(FEATURE_COLS).toPandas()
-    y_val   = val_sp.select(TARGET_COL).toPandas()[TARGET_COL]
-    X_test  = test_sp.select(FEATURE_COLS).toPandas()
-    y_test  = test_sp.select(TARGET_COL).toPandas()[TARGET_COL]
+    X_val = val_sp.select(FEATURE_COLS).toPandas()
+    y_val = val_sp.select(TARGET_COL).toPandas()[TARGET_COL]
+    X_test = test_sp.select(FEATURE_COLS).toPandas()
+    y_test = test_sp.select(TARGET_COL).toPandas()[TARGET_COL]
 
     print(f"  X_train: {X_train.shape}  |  X_val: {X_val.shape}  |  X_test: {X_test.shape}")
     return X_train, y_train, X_val, y_val, X_test, y_test
@@ -135,7 +152,7 @@ def _para_pandas(train_sp, val_sp, test_sp):
 def _treinar_lgbm(X_train, y_train, X_val, y_val):
     """Treina o LightGBM com early stopping no conjunto de validação."""
     train_ds = lgb.Dataset(X_train, label=y_train, feature_name=FEATURE_COLS)
-    val_ds   = lgb.Dataset(X_val,   label=y_val,   reference=train_ds)
+    val_ds = lgb.Dataset(X_val, label=y_val, reference=train_ds)
 
     print("\nTreinando LightGBM ...")
     model = lgb.train(
@@ -157,11 +174,11 @@ def _avaliar_lgbm(model, X, y, split_name: str) -> dict:
     """
     Calcula AUC-ROC, AUC-PR e métricas de classificação a threshold=0.5.
     """
-    probs     = model.predict(X)
+    probs = model.predict(X)
     preds_bin = (probs >= 0.5).astype(int)
 
     auc_roc = roc_auc_score(y, probs)
-    auc_pr  = average_precision_score(y, probs)
+    auc_pr = average_precision_score(y, probs)
 
     tp = int(((preds_bin == 1) & (y == 1)).sum())
     fp = int(((preds_bin == 1) & (y == 0)).sum())
@@ -169,8 +186,8 @@ def _avaliar_lgbm(model, X, y, split_name: str) -> dict:
     tn = int(((preds_bin == 0) & (y == 0)).sum())
 
     precision = tp / (tp + fp + 1e-9)
-    recall    = tp / (tp + fn + 1e-9)
-    f1        = 2 * precision * recall / (precision + recall + 1e-9)
+    recall = tp / (tp + fn + 1e-9)
+    f1 = 2 * precision * recall / (precision + recall + 1e-9)
 
     print(f"\n── Métricas [{split_name}] ──")
     print(f"  AUC-ROC   : {auc_roc:.4f}")
@@ -181,15 +198,15 @@ def _avaliar_lgbm(model, X, y, split_name: str) -> dict:
     print(f"  TP={tp:,}  FP={fp:,}  FN={fn:,}  TN={tn:,}")
 
     return {
-        "auc_roc":   auc_roc,
-        "auc_pr":    auc_pr,
+        "auc_roc": auc_roc,
+        "auc_pr": auc_pr,
         "precision": precision,
-        "recall":    recall,
-        "f1":        f1,
-        "tp":        float(tp),
-        "fp":        float(fp),
-        "fn":        float(fn),
-        "tn":        float(tn),
+        "recall": recall,
+        "f1": f1,
+        "tp": float(tp),
+        "fp": float(fp),
+        "fn": float(fn),
+        "tn": float(tn),
     }
 
 
@@ -204,7 +221,7 @@ def _log_model_summary(model, X_train, y_train):
         reverse=True,
     )
     positivos = int(y_train.sum())
-    total     = len(y_train)
+    total = len(y_train)
 
     lines = [
         "=== MODEL SUMMARY — LightGBM Baseline ===",
@@ -231,11 +248,11 @@ def _log_model_summary(model, X_train, y_train):
         f"early_stopping   : {EARLY_STOPPING}",
         "",
         f"Training set size: {total:,}",
-        f"Positive rate:     {positivos/total*100:.1f}%",
+        f"Positive rate:     {positivos / total * 100:.1f}%",
     ]
 
     tmpdir = tempfile.mkdtemp()
-    path   = os.path.join(tmpdir, "model_summary.txt")
+    path = os.path.join(tmpdir, "model_summary.txt")
     with open(path, "w") as f:
         f.write("\n".join(lines))
     mlflow.log_artifact(path)
@@ -250,9 +267,9 @@ def _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test):
     plt.style.use("seaborn-v0_8-whitegrid")
 
     splits = [
-        ("train", X_train, y_train, "steelblue",   "--"),
-        ("val",   X_val,   y_val,   "darkorange",  "-"),
-        ("test",  X_test,  y_test,  "forestgreen", "-"),
+        ("train", X_train, y_train, "steelblue", "--"),
+        ("val", X_val, y_val, "darkorange", "-"),
+        ("test", X_test, y_test, "forestgreen", "-"),
     ]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -262,14 +279,26 @@ def _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test):
         probs = model.predict(X)
 
         fpr, tpr, _ = roc_curve(y, probs)
-        auc_roc     = roc_auc_score(y, probs)
-        ax1.plot(fpr, tpr, color=color, linestyle=ls, linewidth=2,
-                 label=f"{split_name.capitalize()} (AUC={auc_roc:.3f})")
+        auc_roc = roc_auc_score(y, probs)
+        ax1.plot(
+            fpr,
+            tpr,
+            color=color,
+            linestyle=ls,
+            linewidth=2,
+            label=f"{split_name.capitalize()} (AUC={auc_roc:.3f})",
+        )
 
         prec, rec, _ = precision_recall_curve(y, probs)
-        auc_pr       = average_precision_score(y, probs)
-        ax2.plot(rec, prec, color=color, linestyle=ls, linewidth=2,
-                 label=f"{split_name.capitalize()} (AUC-PR={auc_pr:.3f})")
+        auc_pr = average_precision_score(y, probs)
+        ax2.plot(
+            rec,
+            prec,
+            color=color,
+            linestyle=ls,
+            linewidth=2,
+            label=f"{split_name.capitalize()} (AUC-PR={auc_pr:.3f})",
+        )
 
     ax1.plot([0, 1], [0, 1], color="grey", linestyle="--", linewidth=1, alpha=0.6)
     ax1.set_title("ROC Curve — LightGBM", fontsize=13, fontweight="bold")
@@ -279,8 +308,14 @@ def _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test):
     ax1.set_xlim([0, 1])
     ax1.set_ylim([0, 1.02])
 
-    ax2.axhline(y=prevalencia, color="red", linestyle="--", linewidth=1, alpha=0.7,
-                label=f"Baseline (prevalência={prevalencia:.2f})")
+    ax2.axhline(
+        y=prevalencia,
+        color="red",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.7,
+        label=f"Baseline (prevalência={prevalencia:.2f})",
+    )
     ax2.set_title("Precision-Recall Curve — LightGBM", fontsize=13, fontweight="bold")
     ax2.set_xlabel("Recall", fontsize=10)
     ax2.set_ylabel("Precision", fontsize=10)
@@ -289,7 +324,7 @@ def _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test):
     ax2.set_ylim([0, 1.02])
 
     tmpdir = tempfile.mkdtemp()
-    path   = os.path.join(tmpdir, "roc_pr_curves.png")
+    path = os.path.join(tmpdir, "roc_pr_curves.png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     mlflow.log_artifact(path)
@@ -311,31 +346,30 @@ def _plot_target_incidence_timeline(df_spark):
         .toPandas()
     )
     comps = incidencia["competencia"].tolist()
-    pcts  = incidencia["pct_positivos"].tolist()
+    pcts = incidencia["pct_positivos"].tolist()
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
     train_mask = [i for i, c in enumerate(comps) if c <= TRAIN_END]
-    val_mask   = [i for i, c in enumerate(comps) if TRAIN_END < c <= VAL_END]
-    test_mask  = [i for i, c in enumerate(comps) if c > VAL_END]
+    val_mask = [i for i, c in enumerate(comps) if TRAIN_END < c <= VAL_END]
+    test_mask = [i for i, c in enumerate(comps) if c > VAL_END]
 
     for mask, color, label in [
-        (train_mask, "steelblue",   "Train"),
-        (val_mask,   "darkorange",  "Val"),
-        (test_mask,  "forestgreen", "Test"),
+        (train_mask, "steelblue", "Train"),
+        (val_mask, "darkorange", "Val"),
+        (test_mask, "forestgreen", "Test"),
     ]:
         if mask:
             ax.axvspan(mask[0] - 0.5, mask[-1] + 0.5, alpha=0.1, color=color, label=label)
             mid = (mask[0] + mask[-1]) / 2
-            ax.annotate(label, xy=(mid, 27), ha="center", fontsize=9,
-                        color=color, fontweight="bold")
+            ax.annotate(
+                label, xy=(mid, 27), ha="center", fontsize=9, color=color, fontweight="bold"
+            )
 
-    ax.plot(range(len(comps)), pcts, color="steelblue", linewidth=2,
-            marker="o", markersize=4)
-    ax.axhline(y=15, color="red", linestyle="--", linewidth=1.2, alpha=0.8,
-               label="Referência 15%")
+    ax.plot(range(len(comps)), pcts, color="steelblue", linewidth=2, marker="o", markersize=4)
+    ax.axhline(y=15, color="red", linestyle="--", linewidth=1.2, alpha=0.8, label="Referência 15%")
 
-    tick_pos    = [i for i, c in enumerate(comps) if c.endswith("01")]
+    tick_pos = [i for i, c in enumerate(comps) if c.endswith("01")]
     tick_labels = [f"{c[:4]}-01" for c in comps if c.endswith("01")]
     ax.set_xticks(tick_pos)
     ax.set_xticklabels(tick_labels, fontsize=9, rotation=30)
@@ -347,7 +381,7 @@ def _plot_target_incidence_timeline(df_spark):
     ax.legend(fontsize=9, loc="upper left")
 
     tmpdir = tempfile.mkdtemp()
-    path   = os.path.join(tmpdir, "target_incidence_timeline.png")
+    path = os.path.join(tmpdir, "target_incidence_timeline.png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     mlflow.log_artifact(path)
@@ -372,8 +406,13 @@ def _plot_feature_importance(model):
     bars = ax.barh(range(len(feats)), imps, color="steelblue", edgecolor="white")
 
     for bar, imp in zip(bars, imps):
-        ax.text(bar.get_width() + max(imps) * 0.01, bar.get_y() + bar.get_height() / 2,
-                f"{imp:.0f}", va="center", fontsize=8)
+        ax.text(
+            bar.get_width() + max(imps) * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{imp:.0f}",
+            va="center",
+            fontsize=8,
+        )
 
     ax.set_yticks(range(len(feats)))
     ax.set_yticklabels(feats, fontsize=9)
@@ -382,7 +421,7 @@ def _plot_feature_importance(model):
     ax.set_title("Feature Importance (Gain) — LightGBM", fontsize=13, fontweight="bold")
 
     tmpdir = tempfile.mkdtemp()
-    path   = os.path.join(tmpdir, "feature_importance.png")
+    path = os.path.join(tmpdir, "feature_importance.png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     mlflow.log_artifact(path)
@@ -398,7 +437,7 @@ def _plot_decile_analysis(model, X, y, split_name: str):
     plt.style.use("seaborn-v0_8-whitegrid")
 
     probs = model.predict(X)
-    df_d  = pd.DataFrame({"prob": probs, "target": y.values})
+    df_d = pd.DataFrame({"prob": probs, "target": y.values})
     df_d["decil"] = pd.qcut(probs, q=10, labels=False, duplicates="drop") + 1
 
     decil_agg = (
@@ -412,21 +451,33 @@ def _plot_decile_analysis(model, X, y, split_name: str):
         .reset_index()
     )
 
-    decis       = decil_agg["decil"].tolist()
-    pcts        = decil_agg["pct_positivos"].tolist()
-    volumes     = decil_agg["n"].tolist()
+    decis = decil_agg["decil"].tolist()
+    pcts = decil_agg["pct_positivos"].tolist()
+    volumes = decil_agg["n"].tolist()
     prevalencia = float(y.mean()) * 100
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     bars1 = ax1.bar(decis, pcts, color="steelblue", edgecolor="white", linewidth=0.5)
-    ax1.axhline(y=prevalencia, color="red", linestyle="--", linewidth=1.2,
-                label=f"Prevalência ({prevalencia:.1f}%)")
+    ax1.axhline(
+        y=prevalencia,
+        color="red",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"Prevalência ({prevalencia:.1f}%)",
+    )
     for bar, pct in zip(bars1, pcts):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                 f"{pct:.1f}%", ha="center", va="bottom", fontsize=8)
-    ax1.set_title(f"Target Incidence by Score Decile [{split_name}]",
-                  fontsize=13, fontweight="bold")
+        ax1.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.3,
+            f"{pct:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    ax1.set_title(
+        f"Target Incidence by Score Decile [{split_name}]", fontsize=13, fontweight="bold"
+    )
     ax1.set_xlabel("Decil", fontsize=10)
     ax1.set_ylabel("% Target = 1", fontsize=10)
     ax1.set_xticks(decis)
@@ -434,16 +485,21 @@ def _plot_decile_analysis(model, X, y, split_name: str):
 
     bars2 = ax2.bar(decis, volumes, color="slategrey", edgecolor="white", linewidth=0.5)
     for bar, n in zip(bars2, volumes):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
-                 f"{n:,}", ha="center", va="bottom", fontsize=8)
-    ax2.set_title(f"Records by Score Decile [{split_name}]",
-                  fontsize=13, fontweight="bold")
+        ax2.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            f"{n:,}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    ax2.set_title(f"Records by Score Decile [{split_name}]", fontsize=13, fontweight="bold")
     ax2.set_xlabel("Decil", fontsize=10)
     ax2.set_ylabel("Registros", fontsize=10)
     ax2.set_xticks(decis)
 
     tmpdir = tempfile.mkdtemp()
-    path   = os.path.join(tmpdir, f"decile_analysis_{split_name}.png")
+    path = os.path.join(tmpdir, f"decile_analysis_{split_name}.png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     mlflow.log_artifact(path)
@@ -463,26 +519,25 @@ def treinar(spark: SparkSession) -> str:
     # para garantir registro no Unity Catalog
 
     with mlflow.start_run(run_name="lightgbm_gbt") as run:
-
-        mlflow.log_params({
-            "model_type":      "LightGBM",
-            "features":        len(FEATURE_COLS),
-            "num_boost_round": NUM_BOOST_ROUND,
-            "early_stopping":  EARLY_STOPPING,
-            "train_end":       TRAIN_END,
-            "val_end":         VAL_END,
-            "test_start":      TEST_START,
-            "target":          TARGET_COL,
-            "target_version":  "v2",
-            "grain":           "municipio_x_competencia",
-            **LGBM_PARAMS,
-        })
-
-        df_spark                                     = _carregar_dados(spark)
-        train_sp, val_sp, test_sp                    = _split_temporal(df_spark)
-        X_train, y_train, X_val, y_val, X_test, y_test = _para_pandas(
-            train_sp, val_sp, test_sp
+        mlflow.log_params(
+            {
+                "model_type": "LightGBM",
+                "features": len(FEATURE_COLS),
+                "num_boost_round": NUM_BOOST_ROUND,
+                "early_stopping": EARLY_STOPPING,
+                "train_end": TRAIN_END,
+                "val_end": VAL_END,
+                "test_start": TEST_START,
+                "target": TARGET_COL,
+                "target_version": "v2",
+                "grain": "municipio_x_competencia",
+                **LGBM_PARAMS,
+            }
         )
+
+        df_spark = _carregar_dados(spark)
+        train_sp, val_sp, test_sp = _split_temporal(df_spark)
+        X_train, y_train, X_val, y_val, X_test, y_test = _para_pandas(train_sp, val_sp, test_sp)
 
         model = _treinar_lgbm(X_train, y_train, X_val, y_val)
         mlflow.log_metric("best_iteration", model.best_iteration)
@@ -491,8 +546,8 @@ def treinar(spark: SparkSession) -> str:
         all_metrics = {}
         for split_name, X, y in [
             ("train", X_train, y_train),
-            ("val",   X_val,   y_val),
-            ("test",  X_test,  y_test),
+            ("val", X_val, y_val),
+            ("test", X_test, y_test),
         ]:
             metrics = _avaliar_lgbm(model, X, y, split_name)
             for k, v in metrics.items():
@@ -507,8 +562,8 @@ def treinar(spark: SparkSession) -> str:
         _plot_feature_importance(model)
         for split_name, X, y in [
             ("train", X_train, y_train),
-            ("val",   X_val,   y_val),
-            ("test",  X_test,  y_test),
+            ("val", X_val, y_val),
+            ("test", X_test, y_test),
         ]:
             _plot_decile_analysis(model, X, y, split_name)
 

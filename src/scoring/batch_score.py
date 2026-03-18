@@ -11,35 +11,49 @@
 # - risk_class baseado em percentis p85/p70 do score desta competência (v2)
 # - Para ativar A/B: passar ab_test=True ou flag --ab no CLI
 
-from mlflow.tracking import MlflowClient
-import mlflow.lightgbm
-import mlflow.spark
-from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql import functions as F
-from pyspark.ml.functions import vector_to_array
-import numpy as np
 import hashlib
 from datetime import datetime
 
+import mlflow.lightgbm
+import mlflow.spark
+from mlflow.tracking import MlflowClient
+from pyspark.ml.functions import vector_to_array
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+
 # ── configuração ────────────────────────────────────────────────
-CATALOG        = "ds_dev_db"
-SCHEMA         = "dev_christian_van_bellen"
+CATALOG = "ds_dev_db"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-TABLE_SCORING  = f"{CATALOG}.{SCHEMA}.gold_pressure_scoring"
-MODEL_NAME     = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
+TABLE_SCORING = f"{CATALOG}.{SCHEMA}.gold_pressure_scoring"
+MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
 
 TARGET_COL = "target_alta_pressao"
 
 FEATURE_COLS = [
-    "casos_por_leito",      "casos_por_leito_lag1", "casos_por_leito_lag2",
-    "casos_por_leito_lag3", "casos_por_leito_ma2",  "casos_por_leito_ma3",
-    "casos_srag_lag1",      "casos_srag_lag2",
-    "obitos_por_leito",     "uti_por_leito_uti",    "share_idosos",
-    "growth_mom",           "growth_3m",            "acceleration",
-    "rolling_std_3m",       "leitos_totais",        "leitos_uti",
-    "num_hospitais",        "mes",                  "quarter",
-    "is_semester1",         "is_rainy_season",
+    "casos_por_leito",
+    "casos_por_leito_lag1",
+    "casos_por_leito_lag2",
+    "casos_por_leito_lag3",
+    "casos_por_leito_ma2",
+    "casos_por_leito_ma3",
+    "casos_srag_lag1",
+    "casos_srag_lag2",
+    "obitos_por_leito",
+    "uti_por_leito_uti",
+    "share_idosos",
+    "growth_mom",
+    "growth_3m",
+    "acceleration",
+    "rolling_std_3m",
+    "leitos_totais",
+    "leitos_uti",
+    "num_hospitais",
+    "mes",
+    "quarter",
+    "is_semester1",
+    "is_rainy_season",
 ]
 
 # A/B canary: 20% dos municípios vai para @challenger se existir
@@ -55,8 +69,8 @@ def _inferir_model_type(run_id: str) -> str:
     Infere o tipo de modelo a partir dos parâmetros do run no MLflow.
     Retorna 'lightgbm' ou 'spark'.
     """
-    client     = MlflowClient()
-    run        = client.get_run(run_id)
+    client = MlflowClient()
+    run = client.get_run(run_id)
     model_type = run.data.params.get("model_type", "").lower()
     if "lightgbm" in model_type:
         return "lightgbm"
@@ -69,7 +83,7 @@ def _get_artifact_path(run_id: str) -> str:
     /dbfs/tmp internamente, que está inacessível neste workspace.
     """
     client = MlflowClient()
-    run    = client.get_run(run_id)
+    run = client.get_run(run_id)
     return f"{run.info.artifact_uri}/model"
 
 
@@ -82,9 +96,9 @@ def _get_model_info(alias: str) -> dict | None:
     try:
         mv = client.get_model_version_by_alias(MODEL_NAME, alias)
         return {
-            "version":    mv.version,
-            "run_id":     mv.run_id,
-            "alias":      alias,
+            "version": mv.version,
+            "run_id": mv.run_id,
+            "alias": alias,
             "model_type": _inferir_model_type(mv.run_id),
         }
     except Exception:
@@ -96,9 +110,9 @@ def _carregar_modelo(model_info: dict, spark: SparkSession) -> tuple:
     Carrega o modelo correto com base no model_type.
     Retorna (model, model_type).
     """
-    run_id     = model_info["run_id"]
+    run_id = model_info["run_id"]
     model_type = model_info["model_type"]
-    path       = _get_artifact_path(run_id)
+    path = _get_artifact_path(run_id)
 
     if model_type == "lightgbm":
         return mlflow.lightgbm.load_model(path), "lightgbm"
@@ -132,7 +146,8 @@ def _ab_route_col(challenger_exists: bool):
 
     hash_int = F.conv(
         F.substring(F.md5(F.col("municipio_id")), 1, 8),
-        16, 10,
+        16,
+        10,
     ).cast("long")
 
     return F.when(
@@ -164,14 +179,14 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
     # todas as competências candidatas ao scoring
     candidatas = (
         df.filter(F.col(TARGET_COL).isNull())
-          .groupBy("competencia")
-          .agg(
-              F.first("capacity_is_forward_fill").alias("forward_fill"),
-              F.first("srag_consolidation_flag").alias("consolidation"),
-              F.first("data_quality_score").alias("quality_score"),
-              F.count("*").alias("municipios"),
-          )
-          .orderBy(F.col("competencia").desc())
+        .groupBy("competencia")
+        .agg(
+            F.first("capacity_is_forward_fill").alias("forward_fill"),
+            F.first("srag_consolidation_flag").alias("consolidation"),
+            F.first("data_quality_score").alias("quality_score"),
+            F.count("*").alias("municipios"),
+        )
+        .orderBy(F.col("competencia").desc())
     )
 
     print("\n── Competências candidatas ao scoring ──")
@@ -179,8 +194,7 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
 
     # aplica política de confiança
     elegivel = (
-        candidatas
-        .filter(F.col("forward_fill") == False)
+        candidatas.filter(F.col("forward_fill") == False)
         .filter(F.col("consolidation") != "recente")
         .filter(F.col("quality_score") >= SCORING_MIN_QUALITY)
         .agg(F.max("competencia").alias("max_comp"))
@@ -204,15 +218,17 @@ def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
     Mantém colunas de contexto além das features do modelo.
     """
     df = spark.table(TABLE_FEATURES)
-    df = df.filter(
-        (F.col("competencia") == competencia) & F.col(TARGET_COL).isNull()
-    )
+    df = df.filter((F.col("competencia") == competencia) & F.col(TARGET_COL).isNull())
 
     for col in FEATURE_COLS:
         df = df.withColumn(col, F.col(col).cast("double"))
 
     colunas_contexto = [
-        "municipio_id", "municipio_nome", "uf", "regiao", "competencia",
+        "municipio_id",
+        "municipio_nome",
+        "uf",
+        "regiao",
+        "competencia",
     ]
     colunas_qualidade = [
         "srag_consolidation_flag",
@@ -280,16 +296,15 @@ def _classificar_risco(df: DataFrame) -> DataFrame:
     print(f"  Thresholds de risco — p85={p85:.6f}  p70={p70:.6f}")
 
     return (
-        df
-        .withColumn(
+        df.withColumn(
             "risk_class",
             F.when(F.col("risk_score") >= p85, F.lit("alto"))
-             .when(F.col("risk_score") >= p70, F.lit("moderado"))
-             .otherwise(F.lit("baixo")),
+            .when(F.col("risk_score") >= p70, F.lit("moderado"))
+            .otherwise(F.lit("baixo")),
         )
         .withColumn("risk_threshold_version", F.lit("v2"))
-        .withColumn("risk_p85",               F.lit(float(p85)))
-        .withColumn("risk_p70",               F.lit(float(p70)))
+        .withColumn("risk_p85", F.lit(float(p85)))
+        .withColumn("risk_p70", F.lit(float(p70)))
     )
 
 
@@ -304,12 +319,12 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
       False → usa só @champion (modo normal)
       True  → ativa roteamento 20/80 se @challenger existir
     """
-    print(f"\n── Batch Score ──")
+    print("\n── Batch Score ──")
     print(f"  Modo A/B: {ab_test}")
     print(f"  Timestamp: {datetime.now()}")
 
     # ── aliases disponíveis ────────────────────────────────────────
-    champion_info   = _get_model_info("champion")
+    champion_info = _get_model_info("champion")
     challenger_info = _get_model_info("challenger") if ab_test else None
 
     if champion_info is None:
@@ -322,11 +337,11 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     if challenger_info:
         print(f"  Challenger: v{challenger_info['version']} ({challenger_info['model_type']})")
     else:
-        print(f"  Challenger: não existe (modo normal)")
+        print("  Challenger: não existe (modo normal)")
 
     # ── competência e features ─────────────────────────────────────
-    competencia  = _get_competencia_scoring(spark)
-    df_features  = _preparar_features(spark, competencia)
+    competencia = _get_competencia_scoring(spark)
+    df_features = _preparar_features(spark, competencia)
     n_municipios = df_features.count()
     print(f"  Municípios a scorar: {n_municipios:,}")
 
@@ -337,10 +352,9 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         _ab_route_col(challenger_exists),
     )
 
-    df_champion   = df_features.filter(F.col("modelo_destinado") == "champion")
+    df_champion = df_features.filter(F.col("modelo_destinado") == "champion")
     df_challenger = (
-        df_features.filter(F.col("modelo_destinado") == "challenger")
-        if challenger_exists else None
+        df_features.filter(F.col("modelo_destinado") == "challenger") if challenger_exists else None
     )
 
     # ── score grupo champion ───────────────────────────────────────
@@ -352,10 +366,9 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         df_scored_champ = _aplicar_score_spark(champ_model, df_champion, champion_info)
 
     df_scored_champ = (
-        df_scored_champ
-        .withColumn("model_alias",   F.lit("champion"))
+        df_scored_champ.withColumn("model_alias", F.lit("champion"))
         .withColumn("model_version", F.lit(champion_info["version"]))
-        .withColumn("model_type",    F.lit(champion_info["model_type"]))
+        .withColumn("model_type", F.lit(champion_info["model_type"]))
     )
 
     # ── score grupo challenger (se A/B ativo) ──────────────────────
@@ -368,10 +381,9 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
             df_scored_chall = _aplicar_score_spark(chall_model, df_challenger, challenger_info)
 
         df_scored_chall = (
-            df_scored_chall
-            .withColumn("model_alias",   F.lit("challenger"))
+            df_scored_chall.withColumn("model_alias", F.lit("challenger"))
             .withColumn("model_version", F.lit(challenger_info["version"]))
-            .withColumn("model_type",    F.lit(challenger_info["model_type"]))
+            .withColumn("model_type", F.lit(challenger_info["model_type"]))
         )
         df_scored = df_scored_champ.unionByName(df_scored_chall)
     else:
@@ -381,24 +393,36 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     df_scored = _classificar_risco(df_scored)
 
     score_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_scored  = (
-        df_scored
-        .withColumn("score_date",  F.lit(score_date))
+    df_scored = (
+        df_scored.withColumn("score_date", F.lit(score_date))
         .withColumn("competencia", F.lit(competencia))
         .drop("modelo_destinado")
     )
 
     # ── schema de saída ────────────────────────────────────────────
     colunas_output = [
-        "municipio_id", "municipio_nome", "uf", "regiao",
-        "competencia", "score_date",
-        "risk_score", "risk_class", "risk_threshold_version",
-        "risk_p85", "risk_p70",
-        "model_alias", "model_version", "model_type",
-        "leitos_totais", "leitos_uti",
-        "casos_por_leito", "casos_por_leito_lag1",
-        "growth_mom", "rolling_std_3m",
-        "srag_consolidation_flag", "data_quality_score",
+        "municipio_id",
+        "municipio_nome",
+        "uf",
+        "regiao",
+        "competencia",
+        "score_date",
+        "risk_score",
+        "risk_class",
+        "risk_threshold_version",
+        "risk_p85",
+        "risk_p70",
+        "model_alias",
+        "model_version",
+        "model_type",
+        "leitos_totais",
+        "leitos_uti",
+        "casos_por_leito",
+        "casos_por_leito_lag1",
+        "growth_mom",
+        "rolling_std_3m",
+        "srag_consolidation_flag",
+        "data_quality_score",
         "capacity_is_forward_fill",
     ]
     df_output = df_scored.select(colunas_output)
@@ -406,8 +430,7 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     # ── grava (append — histórico de scores) ──────────────────────
     spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SCORING} USING DELTA")
     (
-        df_output.write
-        .format("delta")
+        df_output.write.format("delta")
         .mode("append")
         .option("mergeSchema", "true")
         .saveAsTable(TABLE_SCORING)
@@ -419,7 +442,7 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     print(f"  Municípios scored: {n_scored:,}")
 
     # ── resumo ─────────────────────────────────────────────────────
-    print(f"\n── Distribuição de risco ──")
+    print("\n── Distribuição de risco ──")
     (
         df_output.groupBy("risk_class", "model_alias")
         .count()
@@ -427,12 +450,11 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         .show()
     )
 
-    print(f"\n── Top 10 municípios em alto risco ──")
+    print("\n── Top 10 municípios em alto risco ──")
     (
         df_output.filter(F.col("risk_class") == "alto")
         .orderBy(F.col("risk_score").desc())
-        .select("municipio_id", "municipio_nome", "uf",
-                "risk_score", "risk_class", "model_alias")
+        .select("municipio_id", "municipio_nome", "uf", "risk_score", "risk_class", "model_alias")
         .show(10, truncate=False)
     )
 
@@ -442,6 +464,7 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
-    spark   = SparkSession.builder.getOrCreate()
+
+    spark = SparkSession.builder.getOrCreate()
     ab_test = "--ab" in sys.argv
     score(spark, ab_test=ab_test)

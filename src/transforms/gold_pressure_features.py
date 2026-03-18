@@ -65,22 +65,22 @@
 #   srag_consolidation_flag      = "consolidado" | "estabilizando" | "recente"
 #   data_quality_score           = 0.3 | 0.5 | 0.8 | 1.0
 
+from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
-from databricks.feature_engineering import FeatureEngineeringClient
 
 # ── configuração ────────────────────────────────────────────────
 CATALOG = "ds_dev_db"
-SCHEMA  = "dev_christian_van_bellen"
+SCHEMA = "dev_christian_van_bellen"
 
 TABLE_SRC_SRAG = f"{CATALOG}.{SCHEMA}.silver_srag_municipio_semana"
-TABLE_SRC_CAP  = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
-TABLE_DST      = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
+TABLE_SRC_CAP = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
+TABLE_DST = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
 
 # Window padrão do pipeline — reusado por _lags, _dinamica e _target
-MUNICIPIO_W  = Window.partitionBy("municipio_id").orderBy("competencia")
-MUNICIPIO_W2 = MUNICIPIO_W.rowsBetween(-2, -1)   # 2 meses anteriores
-MUNICIPIO_W3 = MUNICIPIO_W.rowsBetween(-3, -1)   # 3 meses anteriores
+MUNICIPIO_W = Window.partitionBy("municipio_id").orderBy("competencia")
+MUNICIPIO_W2 = MUNICIPIO_W.rowsBetween(-2, -1)  # 2 meses anteriores
+MUNICIPIO_W3 = MUNICIPIO_W.rowsBetween(-3, -1)  # 3 meses anteriores
 
 
 # ── funções ─────────────────────────────────────────────────────
@@ -92,17 +92,14 @@ def _agregar_srag_mensal(srag):
     # uf fora do groupBy: alguns municípios têm casos notificados em UFs diferentes
     # da residência (ex: Brasília aparece com BA, GO e DF), o que geraria múltiplas
     # linhas por municipio_id × competencia e quebraria a primary key da feature table.
-    return (
-        srag.groupBy("municipio_id", "competencia")
-        .agg(
-            F.first("uf", ignorenulls=True).alias("uf"),
-            F.sum("casos_srag")            .alias("casos_srag_mes"),
-            F.sum("casos_obito")           .alias("casos_obito_mes"),
-            F.sum("casos_uti")             .alias("casos_uti_mes"),
-            F.sum("casos_idosos")          .alias("casos_idosos_mes"),
-            F.sum("casos_pediatricos")     .alias("casos_pediatricos_mes"),
-            F.count("*")                   .alias("semanas_com_dado"),
-        )
+    return srag.groupBy("municipio_id", "competencia").agg(
+        F.first("uf", ignorenulls=True).alias("uf"),
+        F.sum("casos_srag").alias("casos_srag_mes"),
+        F.sum("casos_obito").alias("casos_obito_mes"),
+        F.sum("casos_uti").alias("casos_uti_mes"),
+        F.sum("casos_idosos").alias("casos_idosos_mes"),
+        F.sum("casos_pediatricos").alias("casos_pediatricos_mes"),
+        F.count("*").alias("semanas_com_dado"),
     )
 
 
@@ -118,7 +115,7 @@ def _forward_fill_capacity(cap, srag_mensal):
          da cap, substituindo o campo competencia pelo mês futuro.
       4. Une as duas partes com capacity_is_forward_fill como marcador.
     """
-    max_comp_cap  = cap.agg(F.max("competencia").alias("max_comp")).collect()[0]["max_comp"]
+    max_comp_cap = cap.agg(F.max("competencia").alias("max_comp")).collect()[0]["max_comp"]
     max_comp_srag = srag_mensal.agg(F.max("competencia").alias("max_comp")).collect()[0]["max_comp"]
 
     # competências da SRAG sem cobertura na capacity
@@ -128,7 +125,7 @@ def _forward_fill_capacity(cap, srag_mensal):
         if row["competencia"] > max_comp_cap
     ]
 
-    print(f"\n── Forward fill de capacity ──")
+    print("\n── Forward fill de capacity ──")
     print(f"  Max competência na capacity : {max_comp_cap}")
     print(f"  Max competência na SRAG     : {max_comp_srag}")
 
@@ -136,22 +133,25 @@ def _forward_fill_capacity(cap, srag_mensal):
     cap_real = cap.withColumn("capacity_is_forward_fill", F.lit(False))
 
     if not comps_futuras:
-        print(f"  Nenhuma competência futura — forward fill não necessário.")
+        print("  Nenhuma competência futura — forward fill não necessário.")
         return cap_real
 
-    print(f"  Competências sem capacity (usarão forward fill de {max_comp_cap}): {sorted(comps_futuras)}")
+    print(
+        f"  Competências sem capacity (usarão forward fill de {max_comp_cap}): {sorted(comps_futuras)}"
+    )
 
     # snapshot do último mês disponível — base do forward fill
     cap_ultimo = cap.filter(F.col("competencia") == max_comp_cap)
 
     # gera uma cópia por competência futura, substituindo o campo competencia
     from functools import reduce
+
     from pyspark.sql import DataFrame as SparkDF
 
     partes_ff = [
-        cap_ultimo
-        .withColumn("competencia", F.lit(comp))
-        .withColumn("capacity_is_forward_fill", F.lit(True))
+        cap_ultimo.withColumn("competencia", F.lit(comp)).withColumn(
+            "capacity_is_forward_fill", F.lit(True)
+        )
         for comp in comps_futuras
     ]
 
@@ -174,11 +174,18 @@ def _join_capacity(srag_mensal, cap):
     cap_expandida = _forward_fill_capacity(cap, srag_mensal)
 
     cap_sel = cap_expandida.select(
-        "municipio_id", "competencia",
-        "municipio_nome", "regiao",
-        "leitos_totais", "leitos_sus", "leitos_uti",
-        "leitos_uti_adulto", "leitos_uti_pediatrico", "leitos_uti_neonatal",
-        "num_estabelecimentos", "num_hospitais",
+        "municipio_id",
+        "competencia",
+        "municipio_nome",
+        "regiao",
+        "leitos_totais",
+        "leitos_sus",
+        "leitos_uti",
+        "leitos_uti_adulto",
+        "leitos_uti_pediatrico",
+        "leitos_uti_neonatal",
+        "num_estabelecimentos",
+        "num_hospitais",
         "capacity_is_forward_fill",
     )
 
@@ -187,17 +194,21 @@ def _join_capacity(srag_mensal, cap):
 
     # campos de demanda nulos (município sem casos SRAG no mês) → 0
     campos_demanda = [
-        "casos_srag_mes", "casos_obito_mes", "casos_uti_mes",
-        "casos_idosos_mes", "casos_pediatricos_mes", "semanas_com_dado",
+        "casos_srag_mes",
+        "casos_obito_mes",
+        "casos_uti_mes",
+        "casos_idosos_mes",
+        "casos_pediatricos_mes",
+        "semanas_com_dado",
     ]
     for campo in campos_demanda:
         df = df.withColumn(campo, F.coalesce(F.col(campo), F.lit(0)))
 
     total_antes = df.count()
     df = df.filter(F.col("leitos_totais") >= 10)
-    total_apos  = df.count()
+    total_apos = df.count()
 
-    print(f"\n── Join capacity × srag ──")
+    print("\n── Join capacity × srag ──")
     print(f"  Após left join: {total_antes:,}")
     print(f"  Removidos (leitos_totais < 10): {total_antes - total_apos:,}")
     print(f"  Mantidos: {total_apos:,}")
@@ -210,8 +221,7 @@ def _features_razao(df):
     e como base para o target do mês seguinte).
     """
     return (
-        df
-        .withColumn(
+        df.withColumn(
             "casos_por_leito",
             F.round(F.col("casos_srag_mes") / (F.col("leitos_totais") + 1), 6),
         )
@@ -242,15 +252,34 @@ def _lags_e_medias_moveis(df):
     return (
         df
         # lags de casos_por_leito
-        .withColumn("casos_por_leito_lag1", F.coalesce(F.lag("casos_por_leito", 1).over(MUNICIPIO_W), F.lit(0.0)))
-        .withColumn("casos_por_leito_lag2", F.coalesce(F.lag("casos_por_leito", 2).over(MUNICIPIO_W), F.lit(0.0)))
-        .withColumn("casos_por_leito_lag3", F.coalesce(F.lag("casos_por_leito", 3).over(MUNICIPIO_W), F.lit(0.0)))
+        .withColumn(
+            "casos_por_leito_lag1",
+            F.coalesce(F.lag("casos_por_leito", 1).over(MUNICIPIO_W), F.lit(0.0)),
+        )
+        .withColumn(
+            "casos_por_leito_lag2",
+            F.coalesce(F.lag("casos_por_leito", 2).over(MUNICIPIO_W), F.lit(0.0)),
+        )
+        .withColumn(
+            "casos_por_leito_lag3",
+            F.coalesce(F.lag("casos_por_leito", 3).over(MUNICIPIO_W), F.lit(0.0)),
+        )
         # médias móveis
-        .withColumn("casos_por_leito_ma2",  F.coalesce(F.avg("casos_por_leito").over(MUNICIPIO_W2), F.lit(0.0)))
-        .withColumn("casos_por_leito_ma3",  F.coalesce(F.avg("casos_por_leito").over(MUNICIPIO_W3), F.lit(0.0)))
+        .withColumn(
+            "casos_por_leito_ma2",
+            F.coalesce(F.avg("casos_por_leito").over(MUNICIPIO_W2), F.lit(0.0)),
+        )
+        .withColumn(
+            "casos_por_leito_ma3",
+            F.coalesce(F.avg("casos_por_leito").over(MUNICIPIO_W3), F.lit(0.0)),
+        )
         # lags de casos_srag_mes (volume absoluto — feature complementar)
-        .withColumn("casos_srag_lag1",      F.coalesce(F.lag("casos_srag_mes", 1).over(MUNICIPIO_W), F.lit(0)))
-        .withColumn("casos_srag_lag2",      F.coalesce(F.lag("casos_srag_mes", 2).over(MUNICIPIO_W), F.lit(0)))
+        .withColumn(
+            "casos_srag_lag1", F.coalesce(F.lag("casos_srag_mes", 1).over(MUNICIPIO_W), F.lit(0))
+        )
+        .withColumn(
+            "casos_srag_lag2", F.coalesce(F.lag("casos_srag_mes", 2).over(MUNICIPIO_W), F.lit(0))
+        )
     )
 
 
@@ -260,42 +289,34 @@ def _features_dinamica(df):
     growth_mom / growth_3m: denominador + 0.001 para evitar divisão por zero
     com valores muito pequenos de casos_por_leito.
     """
-    df = (
-        df
-        .withColumn(
-            "growth_mom",
-            F.round(
-                (F.col("casos_por_leito") - F.col("casos_por_leito_lag1"))
-                / (F.col("casos_por_leito_lag1") + F.lit(0.001)),
-                4,
-            ),
-        )
-        .withColumn(
-            "growth_3m",
-            F.round(
-                (F.col("casos_por_leito") - F.col("casos_por_leito_lag3"))
-                / (F.col("casos_por_leito_lag3") + F.lit(0.001)),
-                4,
-            ),
-        )
+    df = df.withColumn(
+        "growth_mom",
+        F.round(
+            (F.col("casos_por_leito") - F.col("casos_por_leito_lag1"))
+            / (F.col("casos_por_leito_lag1") + F.lit(0.001)),
+            4,
+        ),
+    ).withColumn(
+        "growth_3m",
+        F.round(
+            (F.col("casos_por_leito") - F.col("casos_por_leito_lag3"))
+            / (F.col("casos_por_leito_lag3") + F.lit(0.001)),
+            4,
+        ),
     )
     # acceleration depende de growth_mom — calculado após derivar growth_mom
-    df = (
-        df
-        .withColumn(
-            "acceleration",
-            F.round(
-                F.col("growth_mom") - F.coalesce(F.lag("growth_mom", 1).over(MUNICIPIO_W), F.lit(0.0)),
-                4,
-            ),
-        )
-        .withColumn(
-            "rolling_std_3m",
-            F.round(
-                F.coalesce(F.stddev("casos_por_leito").over(MUNICIPIO_W3), F.lit(0.0)),
-                4,
-            ),
-        )
+    df = df.withColumn(
+        "acceleration",
+        F.round(
+            F.col("growth_mom") - F.coalesce(F.lag("growth_mom", 1).over(MUNICIPIO_W), F.lit(0.0)),
+            4,
+        ),
+    ).withColumn(
+        "rolling_std_3m",
+        F.round(
+            F.coalesce(F.stddev("casos_por_leito").over(MUNICIPIO_W3), F.lit(0.0)),
+            4,
+        ),
     )
     return df
 
@@ -306,12 +327,14 @@ def _features_sazonais(df):
     is_rainy_season: proxy de sazonalidade respiratória (meses chuvosos no Brasil).
     """
     return (
-        df
-        .withColumn("ano",            F.col("competencia").substr(1, 4).cast("integer"))
-        .withColumn("mes",            F.col("competencia").substr(5, 2).cast("integer"))
-        .withColumn("quarter",        F.ceil(F.col("mes") / 3).cast("integer"))
-        .withColumn("is_semester1",   F.when(F.col("mes") <= 6, F.lit(1)).otherwise(F.lit(0)))
-        .withColumn("is_rainy_season", F.when(F.col("mes").isin(11, 12, 1, 2, 3), F.lit(1)).otherwise(F.lit(0)))
+        df.withColumn("ano", F.col("competencia").substr(1, 4).cast("integer"))
+        .withColumn("mes", F.col("competencia").substr(5, 2).cast("integer"))
+        .withColumn("quarter", F.ceil(F.col("mes") / 3).cast("integer"))
+        .withColumn("is_semester1", F.when(F.col("mes") <= 6, F.lit(1)).otherwise(F.lit(0)))
+        .withColumn(
+            "is_rainy_season",
+            F.when(F.col("mes").isin(11, 12, 1, 2, 3), F.lit(1)).otherwise(F.lit(0)),
+        )
     )
 
 
@@ -353,8 +376,8 @@ def _adicionar_consolidation_flag(df):
     df = df.withColumn(
         "srag_consolidation_flag",
         F.when(F.col("_dias_desde_fechamento") >= 90, F.lit("consolidado"))
-         .when(F.col("_dias_desde_fechamento") >= 45, F.lit("estabilizando"))
-         .otherwise(F.lit("recente")),
+        .when(F.col("_dias_desde_fechamento") >= 45, F.lit("estabilizando"))
+        .otherwise(F.lit("recente")),
     )
 
     # score de qualidade combinado (0 a 1)
@@ -364,13 +387,16 @@ def _adicionar_consolidation_flag(df):
         F.when(
             F.col("capacity_is_forward_fill") == True,
             F.lit(0.3),
-        ).when(
+        )
+        .when(
             F.col("srag_consolidation_flag") == "recente",
             F.lit(0.5),
-        ).when(
+        )
+        .when(
             F.col("srag_consolidation_flag") == "estabilizando",
             F.lit(0.8),
-        ).otherwise(F.lit(1.0)),
+        )
+        .otherwise(F.lit(1.0)),
     )
 
     df = df.drop("_data_fechamento", "_dias_desde_fechamento")
@@ -409,8 +435,8 @@ def _calcular_target(df):
     df = df.withColumn(
         "casos_por_leito_next",
         F.when(
-            (F.col("next_is_forward_fill") == True) |
-            (F.col("next_consolidation_flag") == "recente"),
+            (F.col("next_is_forward_fill") == True)
+            | (F.col("next_consolidation_flag") == "recente"),
             F.lit(None).cast("double"),
         ).otherwise(F.col("casos_por_leito_next")),
     )
@@ -420,11 +446,8 @@ def _calcular_target(df):
 
     # passo 4: percentil 85 nacional de casos_por_leito_next por competencia
     # (linhas com casos_por_leito_next null são ignoradas pelo percentile_approx)
-    p85 = (
-        df.groupBy("competencia")
-        .agg(
-            F.percentile_approx("casos_por_leito_next", 0.85).alias("_p85_nacional"),
-        )
+    p85 = df.groupBy("competencia").agg(
+        F.percentile_approx("casos_por_leito_next", 0.85).alias("_p85_nacional"),
     )
 
     # passo 5: join do p85 de volta ao df principal
@@ -432,19 +455,19 @@ def _calcular_target(df):
 
     # passo 6: target binário (null onde não há mês seguinte ou t+1 é forward fill)
     df = (
-        df
-        .withColumn(
+        df.withColumn(
             "target_alta_pressao",
             F.when(
                 F.col("casos_por_leito_next").isNotNull(),
-                F.when(F.col("casos_por_leito_next") >= F.col("_p85_nacional"), F.lit(1))
-                 .otherwise(F.lit(0)),
+                F.when(F.col("casos_por_leito_next") >= F.col("_p85_nacional"), F.lit(1)).otherwise(
+                    F.lit(0)
+                ),
             ),
         )
         # passo 7: colunas de governança
         .withColumn("target_definition_version", F.lit("v2"))
-        .withColumn("target_metric",             F.lit("casos_por_leito"))
-        .withColumn("target_percentile",         F.lit(0.85))
+        .withColumn("target_metric", F.lit("casos_por_leito"))
+        .withColumn("target_percentile", F.lit(0.85))
         .drop("casos_por_leito_next", "_p85_nacional")
     )
     return df
@@ -456,7 +479,7 @@ def _validar_e_filtrar(df):
     NÃO remove linhas com target null — são usadas para scoring ao vivo.
     """
     total = df.count()
-    print(f"\n── Validação de qualidade ──")
+    print("\n── Validação de qualidade ──")
     print(f"  Total antes da filtragem: {total:,}")
 
     # informativo: último mês por município (sem target)
@@ -483,15 +506,11 @@ def _validar_e_filtrar(df):
 
     # regra 4: target_alta_pressao só em {0, 1, null}
     target_invalido = df.filter(
-        F.col("target_alta_pressao").isNotNull() &
-        ~F.col("target_alta_pressao").isin(0, 1)
+        F.col("target_alta_pressao").isNotNull() & ~F.col("target_alta_pressao").isin(0, 1)
     ).count()
     if target_invalido:
         print(f"  ⚠ Descartados por target_alta_pressao fora de {{0, 1}}: {target_invalido:,}")
-    df = df.filter(
-        F.col("target_alta_pressao").isNull() |
-        F.col("target_alta_pressao").isin(0, 1)
-    )
+    df = df.filter(F.col("target_alta_pressao").isNull() | F.col("target_alta_pressao").isin(0, 1))
 
     total_apos = df.count()
     print(f"  Total após filtragem: {total_apos:,}  (descartados: {total - total_apos:,})")
@@ -501,10 +520,9 @@ def _validar_e_filtrar(df):
 def _adicionar_metadados(df):
     """Adiciona colunas de rastreabilidade do processamento."""
     return (
-        df
-        .withColumn("_processed_at", F.current_timestamp())
-        .withColumn("_source_srag",  F.lit(TABLE_SRC_SRAG))
-        .withColumn("_source_cap",   F.lit(TABLE_SRC_CAP))
+        df.withColumn("_processed_at", F.current_timestamp())
+        .withColumn("_source_srag", F.lit(TABLE_SRC_SRAG))
+        .withColumn("_source_cap", F.lit(TABLE_SRC_CAP))
     )
 
 
@@ -517,7 +535,7 @@ def transformar(spark: SparkSession):
 
     print("Lendo fontes silver ...")
     srag = spark.table(TABLE_SRC_SRAG)
-    cap  = spark.table(TABLE_SRC_CAP)
+    cap = spark.table(TABLE_SRC_CAP)
     print(f"  srag: {srag.count():,} linhas | cap: {cap.count():,} linhas")
 
     df = _agregar_srag_mensal(srag)
@@ -540,7 +558,7 @@ def transformar(spark: SparkSession):
 
     if table_exists:
         spark.sql(f"DROP TABLE IF EXISTS {TABLE_DST}")
-        print(f"  Tabela anterior removida")
+        print("  Tabela anterior removida")
 
     print(f"\nCriando feature table {TABLE_DST} ...")
     fe.create_table(
@@ -577,9 +595,9 @@ def show_summary(spark: SparkSession):
         .withColumn("ano", F.col("competencia").substr(1, 4))
         .groupBy("ano")
         .agg(
-            F.count("*")                                    .alias("total"),
-            F.sum("target_alta_pressao")                    .alias("positivos"),
-            F.round(F.avg("target_alta_pressao") * 100, 2) .alias("pct_positivos"),
+            F.count("*").alias("total"),
+            F.sum("target_alta_pressao").alias("positivos"),
+            F.round(F.avg("target_alta_pressao") * 100, 2).alias("pct_positivos"),
         )
         .orderBy("ano")
         .show()
@@ -587,22 +605,30 @@ def show_summary(spark: SparkSession):
 
     print("\nEstatísticas de casos_por_leito:")
     df.select(
-        F.round(F.min("casos_por_leito"),    6).alias("min"),
-        F.round(F.max("casos_por_leito"),    6).alias("max"),
-        F.round(F.avg("casos_por_leito"),    6).alias("mean"),
+        F.round(F.min("casos_por_leito"), 6).alias("min"),
+        F.round(F.max("casos_por_leito"), 6).alias("max"),
+        F.round(F.avg("casos_por_leito"), 6).alias("mean"),
         F.round(F.stddev("casos_por_leito"), 6).alias("stddev"),
     ).show()
 
     print("\nCorrelação das features com o target:")
     features = [
-        "casos_por_leito",     "casos_por_leito_lag1", "casos_por_leito_ma2",
-        "casos_por_leito_ma3", "casos_srag_lag1",       "growth_mom",
-        "leitos_totais",       "leitos_uti",            "obitos_por_leito",
-        "uti_por_leito_uti",   "share_idosos",          "rolling_std_3m",
+        "casos_por_leito",
+        "casos_por_leito_lag1",
+        "casos_por_leito_ma2",
+        "casos_por_leito_ma3",
+        "casos_srag_lag1",
+        "growth_mom",
+        "leitos_totais",
+        "leitos_uti",
+        "obitos_por_leito",
+        "uti_por_leito_uti",
+        "share_idosos",
+        "rolling_std_3m",
     ]
     df_not_null = df.filter(F.col("target_alta_pressao").isNotNull())
     for feat in features:
-        corr  = df_not_null.stat.corr(feat, "target_alta_pressao")
+        corr = df_not_null.stat.corr(feat, "target_alta_pressao")
         barra = "█" * int(abs(corr) * 40)
         sinal = "+" if corr >= 0 else "-"
         print(f"  {feat:<28} {sinal}{abs(corr):.4f}  {barra}")
