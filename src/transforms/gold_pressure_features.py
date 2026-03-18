@@ -435,8 +435,7 @@ def _calcular_target(df):
     df = df.withColumn(
         "casos_por_leito_next",
         F.when(
-            F.col("next_is_forward_fill")
-            | (F.col("next_consolidation_flag") == "recente"),
+            F.col("next_is_forward_fill") | (F.col("next_consolidation_flag") == "recente"),
             F.lit(None).cast("double"),
         ).otherwise(F.col("casos_por_leito_next")),
     )

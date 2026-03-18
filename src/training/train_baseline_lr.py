@@ -174,7 +174,9 @@ def _log_model_summary(model, train):
     coefs = lr_model.coefficients.toArray()
     intercept = lr_model.intercept
 
-    coef_pairs = sorted(zip(FEATURE_COLS, coefs, strict=False), key=lambda x: abs(x[1]), reverse=True)
+    coef_pairs = sorted(
+        zip(FEATURE_COLS, coefs, strict=False), key=lambda x: abs(x[1]), reverse=True
+    )
 
     total = train.count()
     positivos = train.filter(F.col(TARGET_COL) == 1.0).count()
