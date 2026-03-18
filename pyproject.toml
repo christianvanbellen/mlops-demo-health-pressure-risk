@@ -59,8 +59,7 @@ monitor = "health_pressure_risk.monitoring.performance_monitor:main"
 trigger = "health_pressure_risk.monitoring.retrain_trigger:main"
 
 [tool.hatch.build.targets.wheel]
-# Inclui só o src/ no pacote distribuído
 packages = ["src"]
 
-[tool.hatch.build.targets.wheel.sources]
-"src" = "health_pressure_risk"
+[tool.hatch.build.targets.editable]
+packages = ["src"]
