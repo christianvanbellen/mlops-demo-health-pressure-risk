@@ -1,3 +1,5 @@
+line-length = 100
+
 [lint]
 select = [
   "E",   # pycodestyle errors
@@ -20,4 +22,3 @@ ignore = [
 [format]
 quote-style = "double"
 indent-style = "space"
-line-length = 100
