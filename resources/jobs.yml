@@ -1,0 +1,155 @@
+resources:
+  jobs:
+
+    # ── Job 1: Pipeline semanal ──────────────────────────
+    job_health_pressure_weekly:
+      name: job_health_pressure_weekly
+      description: >
+        Pipeline semanal do Radar de Pressão Assistencial.
+        Roda toda segunda-feira: ingestão, transforms, scoring e monitoramento.
+
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED   # ativar em produção
+
+      email_notifications:
+        on_failure:
+          - christian.bellen@indicium.tech
+
+      tasks:
+
+        - task_key: ingestao_bronze
+          description: "Reingestão das fontes live (SRAG + Hospitais e Leitos)"
+          spark_python_task:
+            python_file: src/ingestion/srag_ingest.py
+            parameters: ["--live"]
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600
+          max_retries: 1
+
+        - task_key: ingestao_hospitais
+          description: "Reingestão de Hospitais e Leitos (live)"
+          depends_on:
+            - task_key: ingestao_bronze
+          spark_python_task:
+            python_file: src/ingestion/hospitais_leitos_ingest.py
+            parameters: ["--live"]
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 1800
+          max_retries: 1
+
+        - task_key: silver_capacity
+          description: "Reprocessa silver_capacity_municipio_mes"
+          depends_on:
+            - task_key: ingestao_hospitais
+          spark_python_task:
+            python_file: src/transforms/silver_capacity_municipio_mes.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 1800
+
+        - task_key: silver_srag
+          description: "Reprocessa silver_srag_municipio_semana"
+          depends_on:
+            - task_key: ingestao_bronze
+          spark_python_task:
+            python_file: src/transforms/silver_srag_municipio_semana.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 1800
+
+        - task_key: gold_features
+          description: "Reprocessa gold_pressure_features (Feature Store)"
+          depends_on:
+            - task_key: silver_capacity
+            - task_key: silver_srag
+          spark_python_task:
+            python_file: src/transforms/gold_pressure_features.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600
+
+        - task_key: batch_score
+          description: "Aplica @champion sobre a competência mais recente elegível"
+          depends_on:
+            - task_key: gold_features
+          spark_python_task:
+            python_file: src/scoring/batch_score.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 1800
+
+        - task_key: performance_monitor
+          description: "Calcula Precision@K realizada e detecta degradação"
+          depends_on:
+            - task_key: batch_score
+          spark_python_task:
+            python_file: src/monitoring/performance_monitor.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600
+
+        - task_key: retrain_trigger
+          description: >
+            Avalia se retraining deve ser disparado.
+            Regra: Precision@K < 0.55 por 2+ competências consecutivas.
+          depends_on:
+            - task_key: performance_monitor
+          spark_python_task:
+            python_file: src/monitoring/retrain_trigger.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 600
+
+    # ── Job 2: Retraining ────────────────────────────────
+    job_health_pressure_retrain:
+      name: job_health_pressure_retrain
+      description: >
+        Pipeline de retraining do Radar de Pressão Assistencial.
+        Disparado automaticamente pelo retrain_trigger ou manualmente.
+        Treina LR + LightGBM, compara com champion atual e registra
+        challenger no MLflow para aprovação humana.
+
+      # sem schedule — disparado por trigger ou manualmente
+      email_notifications:
+        on_start:
+          - christian.bellen@indicium.tech
+        on_success:
+          - christian.bellen@indicium.tech
+        on_failure:
+          - christian.bellen@indicium.tech
+
+      # parâmetros recebidos do retrain_trigger
+      parameters:
+        - name: trigger_reason
+          default: "manual"
+        - name: trigger_date
+          default: ""
+        - name: retrain_id
+          default: ""
+
+      tasks:
+
+        - task_key: train_baseline_lr
+          description: "Treina Logistic Regression baseline"
+          spark_python_task:
+            python_file: src/training/train_baseline_lr.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600
+          max_retries: 1
+
+        - task_key: train_gbt
+          description: "Treina LightGBM principal"
+          depends_on:
+            - task_key: train_baseline_lr
+          spark_python_task:
+            python_file: src/training/train_gbt.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600
+          max_retries: 1
+
+        - task_key: evaluate
+          description: >
+            Compara LR vs LightGBM, registra melhor como @challenger
+            e aciona human gate no MLflow UI para promoção a @champion.
+          depends_on:
+            - task_key: train_gbt
+          spark_python_task:
+            python_file: src/training/evaluate.py
+          existing_cluster_id: ${var.cluster_id}
+          timeout_seconds: 3600

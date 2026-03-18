@@ -1,9 +1,14 @@
-# This is a Databricks asset bundle definition for mlops-demo-health-pressure-risk.
-# The Databricks extension requires databricks.yml configuration file.
-# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
-
 bundle:
   name: mlops-demo-health-pressure-risk
+
+variables:
+  catalog:
+    default: ds_dev_db
+  schema:
+    default: dev_christian_van_bellen
+  cluster_id:
+    description: "ID do cluster ML a usar nos Jobs (DBR 16.x ML)"
+    default: ""
 
 targets:
   dev:
@@ -11,9 +16,17 @@ targets:
     default: true
     workspace:
       host: https://dbc-bacd151e-e2f8.cloud.databricks.com
+    variables:
+      catalog: ds_dev_db
+      schema:  dev_christian_van_bellen
 
-  ## Optionally, there could be 'staging' or 'prod' targets here.
-  #
-  # prod:
-  #   workspace:
-  #     host: https://dbc-bacd151e-e2f8.cloud.databricks.com
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-bacd151e-e2f8.cloud.databricks.com
+    variables:
+      catalog: ds_dev_db
+      schema:  dev_christian_van_bellen
+
+include:
+  - resources/*.yml
