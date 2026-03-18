@@ -74,6 +74,12 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
           databricks --version
 
+      - name: Debug secrets (temporary)
+        run: |
+          echo "HOST is set: ${{ secrets.DATABRICKS_HOST != '' }}"
+          echo "CLIENT_ID is set: ${{ secrets.DATABRICKS_CLIENT_ID != '' }}"
+          echo "CLIENT_SECRET is set: ${{ secrets.DATABRICKS_CLIENT_SECRET != '' }}"
+
       - name: Configure Databricks auth
         run: |
           echo "DATABRICKS_HOST=${{ secrets.DATABRICKS_HOST }}" >> $GITHUB_ENV
