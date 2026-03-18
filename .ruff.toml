@@ -1,0 +1,23 @@
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+]
+ignore = [
+  "E501",  # line too long — deixar para o formatter
+  "B008",  # function calls in default args (comum em PySpark)
+]
+
+[lint.per-file-ignores]
+"src/ingestion/*"  = ["B007"]
+"src/training/*"   = ["B006", "B007"]
+"notebooks/*"      = ["E402", "F401"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-length = 100

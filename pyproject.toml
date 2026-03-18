@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "health-pressure-risk"
+version = "0.1.0"
+description = "Radar de Pressão Assistencial — MLOps pipeline para previsão de risco de sobrecarga hospitalar respiratória por município"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Christian Van Bellen", email = "christian.bellen@indicium.tech" }
+]
+
+# Dependências de produção — instaladas no cluster Databricks
+dependencies = [
+  # ML e modelagem
+  "lightgbm>=4.5.0",
+  "scikit-learn>=1.4.0",
+  "mlflow>=2.14.0",
+
+  # Data
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+
+  # Visualização
+  "matplotlib>=3.8.0",
+
+  # HTTP (ingestão)
+  "requests>=2.31.0",
+
+  # Databricks SDK (trigger de Jobs)
+  "databricks-sdk>=0.28.0",
+]
+
+[project.optional-dependencies]
+# Dependências de desenvolvimento — não vão para o cluster
+dev = [
+  # CLI do Databricks (DAB deploy, bundle validate)
+  "databricks-cli>=0.18.0",
+
+  # Qualidade de código
+  "ruff>=0.4.0",
+  "mypy>=1.10.0",
+
+  # Testes
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+
+  # Notebooks locais
+  "ipykernel>=6.29.0",
+]
+
+[project.scripts]
+# Entrypoints CLI convenientes
+score   = "health_pressure_risk.scoring.batch_score:main"
+monitor = "health_pressure_risk.monitoring.performance_monitor:main"
+trigger = "health_pressure_risk.monitoring.retrain_trigger:main"
+
+[tool.hatch.build.targets.wheel]
+# Inclui só o src/ no pacote distribuído
+packages = ["src"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = "health_pressure_risk"

@@ -1,2 +1,39 @@
 .databricks
 scratch/
+jobs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# UV / virtualenv
+.venv/
+.uv/
+venv/
+env/
+
+# Testes
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff / mypy
+.ruff_cache/
+.mypy_cache/
+
+# Databricks
+.databricks/
+bundle.lock
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Scratch
+scratch/
