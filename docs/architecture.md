@@ -1,163 +1,288 @@
-# Arquitetura do projeto — health-pressure-risk
+# Arquitetura — Radar de Pressão Assistencial
 
 ## Visão geral
 
-Pipeline semanal de MLOps para classificação de risco de pressão assistencial
-respiratória por município × semana epidemiológica no Brasil.
+Pipeline MLOps de ponta a ponta para prever risco de sobrecarga hospitalar respiratória
+por município, rodando semanalmente no Databricks.
 
 **Pergunta de negócio:** quais municípios têm maior risco de enfrentar pressão
-assistencial elevada na próxima semana, dado o comportamento recente da demanda
-e a estrutura disponível?
+assistencial elevada na próxima competência, dado o comportamento recente da demanda
+e a capacidade instalada disponível?
+
+**Tipo de problema:** classificação binária supervisionada, com avaliação operacional
+via Precision@K (K = 15% dos municípios — faixa que um gestor monitoraria num ciclo mensal).
 
 ---
 
-## Grain analítico
+## Stack tecnológico
 
-`municipio_id (IBGE 6 dígitos) × semana_epidemiologica`
-
-Escolha justificada por:
-- Reduz ruído cadastral de hospital individual
-- Facilita join com séries epidemiológicas
-- Simplifica explicação e visualização
-- Preserva valor operacional
-
----
-
-## Arquitetura de dados — camadas
-
-### Bronze
-Dados brutos, particionados por data de ingestão. Append-only.
-
-| Tabela | Fonte |
+| Camada | Tecnologia |
 |---|---|
-| `bronze_srag` | SRAG / SIVEP-Gripe (OpenDataSUS) |
-| `bronze_cnes_estabelecimentos` | CNES (OpenDataSUS) |
-| `bronze_hospitais_leitos` | Hospitais e Leitos (OpenDataSUS) |
+| Processamento | Apache Spark (Databricks Runtime 16.4 ML) |
+| Orquestração | Databricks Asset Bundles (DAB) + Jobs |
+| Feature Store | Databricks Feature Engineering Client |
+| Experiment tracking | MLflow (nativo Databricks) |
+| Model registry | Models in Unity Catalog |
+| Linguagem | Python 3.11 |
+| Dependências | UV 0.9.0 + pyproject.toml + uv.lock |
+| CI/CD | GitHub Actions |
+| Linting | Ruff |
+
+---
+
+## Arquitetura de dados — Medallion
+
+### Bronze (raw, append-only)
+
+Catálogo/schema: `ds_dev_db.dev_christian_van_bellen`
+
+| Tabela | Fonte | Script |
+|---|---|---|
+| `bronze_srag` | SRAG / SIVEP-Gripe | `src/ingestion/srag_ingest.py` |
+| `bronze_hospitais_leitos` | Hospitais e Leitos | `src/ingestion/hospitais_leitos_ingest.py` |
+| `bronze_cnes_estabelecimentos` | CNES (Fase 2) | `src/ingestion/cnes_ingest.py` |
+| `bronze_cnes_leitos` | CNES (Fase 2) | `src/ingestion/cnes_ingest.py` |
 
 Regras:
-- Manter schema bruto + metadados de ingestão (`_snapshot_date`, `_source_url`, `_ingestion_ts`)
-- Nunca sobrescrever — reprocessamento deleta partição do período e faz append
-- Tudo como string (inferSchema=false)
+- Schema bruto preservado; tudo como string (`inferSchema=false`)
+- Metadados obrigatórios: `_snapshot_date`, `_source_url`, `_ingestion_ts`, `_is_live`, `_ano_arquivo`
+- Reprocessamento idempotente: `DELETE WHERE _ano_arquivo = {ano}` + append
+- Anos 2023/2024 congelados; 2025/2026 reingeridos toda semana
 
-### Silver
-Dados limpos, padronizados e reconciliados.
+### Silver (limpo, padronizado)
 
-| Tabela | Conteúdo |
-|---|---|
-| `silver_capacity_municipio_semana` | Capacidade hospitalar agregada por município-semana |
-| `silver_srag_municipio_semana` | Demanda SRAG agregada por município-semana |
+| Tabela | Grain | Script |
+|---|---|---|
+| `silver_capacity_municipio_mes` | `municipio_id × competencia (AAAAMM)` | `src/transforms/silver_capacity_municipio_mes.py` |
+| `silver_srag_municipio_semana` | `municipio_id × semana_epidemiologica` | `src/transforms/silver_srag_municipio_semana.py` |
 
 Transformações aplicadas:
-- Padronização de datas e semana epidemiológica
-- Normalização de chaves de município (IBGE 6 dígitos)
-- Deduplicação
-- Harmonização de leitos totais / complementares / UTI
+- Normalização de chaves de município para IBGE 6 dígitos
+- Lookup `UF + nome normalizado → municipio_id` para Hospitais/Leitos 2023/2024 (ausência de `CO_IBGE`)
+- Agregação de leitos por município-competência
+- Derivação de `competencia` (AAAAMM) a partir de `SEM_PRI`
 - Tipagem correta (string → int/double/date)
+- Deduplicação de casos SRAG entre arquivos anuais
+- `uf` via `first(ignorenulls=True)` fora do `groupBy` — municípios com notificações cross-UF (ex: Brasília) gerariam múltiplas linhas por `municipio_id × competencia` e quebrariam a PK da Feature Store
 
-### Gold
-Camada pronta para modelagem, serving e analytics.
+### Gold / Feature Store
 
-| Tabela | Conteúdo |
-|---|---|
-| `gold_pressure_features` | Features + target para treino e scoring |
-| `gold_pressure_scoring` | Saída do modelo (risk_score, risk_class, drivers) |
-| `gold_pressure_monitoring` | Métricas de drift e qualidade |
-
----
-
-## Pipeline de jobs
-
-| Job | Frequência | Tarefas |
+| Tabela | Grain | Script |
 |---|---|---|
-| `job_health_pressure_weekly` | Toda segunda-feira | ingestão → silver → gold → scoring → monitoring |
-| `job_health_pressure_retrain` | Mensal | treino → avaliação → registro do champion |
-| `job_health_pressure_backfill` | Sob demanda | reprocessa últimas 2–4 semanas (atraso SRAG) |
+| `gold_pressure_features` | `municipio_id × competencia` | `src/transforms/gold_pressure_features.py` |
+| `gold_pressure_scoring` | `municipio_id × competencia × run_date` | `src/scoring/batch_score.py` |
+| `monitoring_performance` | `competencia × monitor_date` | `src/monitoring/performance_monitor.py` |
+
+`gold_pressure_features` é registrada como Feature Table com PK `[municipio_id, competencia]`.
 
 ---
 
-## Arquitetura MLOps
+## Grain analítico: mensal, não semanal
 
-```
-Experimentos    → MLflow Tracking (nativo Databricks)
-Model Registry  → Unity Catalog (Models in Unity Catalog)
-Aliases         → champion / staging / shadow
-Serving         → batch scoring semanal (tabela gold_pressure_scoring)
-Serving opcional→ endpoint REST (Mosaic AI Model Serving)
-Monitoring      → data quality + feature drift + score drift
-Retraining      → mensal ou por trigger de drift
-```
+O grain de saída é `municipio_id × competencia (AAAAMM)` — **mensal**, não semanal.
 
----
+Justificativa:
+- A granularidade semanal amplifica o atraso de notificação do SRAG — as últimas 2–4
+  semanas de cada ano estão cronicamente incompletas
+- Agregar por mês suaviza esse ruído e alinha naturalmente com a fonte de capacidade
+  (Hospitais e Leitos), publicada mensalmente
+- Reduz ruído cadastral de estabelecimento individual e facilita explicação operacional
 
-## Features do modelo
-
-### Capacidade (estrutural, estável)
-- `leitos_totais`, `leitos_uti`, `num_hospitais`
-- `leitos_totais_por_10k`, `leitos_uti_por_10k`
-
-### Demanda recente (dinâmica, semanal)
-- `srag_cases_lag1`, `srag_cases_lag2`
-- `srag_cases_ma2`, `srag_cases_ma4`
-- `srag_severe_cases_lag1`, `srag_deaths_lag1`
-
-### Pressão relativa
-- `srag_per_bed_lag1`, `srag_per_icu_bed_lag1`
-- `severe_per_icu_bed_lag1`
-
-### Dinâmica / tendência
-- `growth_wow`, `growth_2w`, `acceleration`
-- `rolling_std_4w`, `pct_change_vs_ma4`
-
-### Sazonalidade
-- `epi_week`, `month`, `quarter`
-
-### Regional
-- `uf_srag_growth`, `regional_pressure_percentile`
-
-### Histórico de risco
-- `prior_pressure_score_lag1`, `prior_high_risk_flag_lag1`
-- `weeks_in_high_risk_last_8w`
+Cobertura: ~3.330–3.354 municípios com `leitos_totais >= 10` (filtro remove municípios
+sem hospital e prováveis erros cadastrais que distorceriam o denominador e o P85).
 
 ---
 
-## Saída do modelo
+## Ciclo de vida ML
 
-Tabela `gold_pressure_scoring`:
+### 1. Feature Engineering
 
-| Campo | Descrição |
+Join: `silver_capacity_municipio_mes` (left) × `silver_srag_municipio_semana` (agregado para mensal).
+Todos os municípios com hospital aparecem — municípios sem casos SRAG no mês ficam com demanda zerada.
+
+**22 features usadas no modelo** (idênticas em treino, validação, teste e scoring):
+
+| Grupo | Features |
 |---|---|
-| `scoring_date` | Data de execução do scoring |
-| `semana_ref` | Semana epidemiológica de referência |
-| `municipio_id` | Código IBGE do município |
-| `municipio_nome` | Nome do município |
-| `uf` | Unidade federativa |
-| `risk_score` | Score entre 0 e 1 |
-| `risk_class` | baixo / moderado / alto |
-| `top_driver_1/2/3` | Principais fatores explicativos |
-| `model_version` | Versão do modelo utilizado |
+| Pressão atual | `casos_por_leito` |
+| Lags de pressão | `casos_por_leito_lag1`, `lag2`, `lag3` |
+| Médias móveis de pressão | `casos_por_leito_ma2`, `ma3` |
+| Demanda bruta | `casos_srag_lag1`, `casos_srag_lag2` |
+| Gravidade | `obitos_por_leito`, `uti_por_leito_uti`, `share_idosos` |
+| Dinâmica / tendência | `growth_mom`, `growth_3m`, `acceleration`, `rolling_std_3m` |
+| Capacidade | `leitos_totais`, `leitos_uti`, `num_hospitais` |
+| Sazonalidade | `mes`, `quarter`, `is_semester1`, `is_rainy_season` |
+
+### 2. Target (v2 — `target_definition_version = "v2"`)
+
+```
+target_alta_pressao(m, t) = 1  se  casos_por_leito(m, t+1) >= P85_nacional(t+1)
+
+casos_por_leito(m, t) = casos_srag_mes(m, t) / (leitos_totais(m, t) + 1)
+
+P85_nacional(t+1) = percentil 85 de casos_por_leito
+                    sobre todos os municípios da competência t+1
+```
+
+Raciocínio da métrica relativa: São Paulo com 37.000 leitos e 8.000 casos não é alerta;
+um município com 10 leitos e 17 casos é crise. Pressão relativa à capacidade captura
+isso; volume absoluto não.
+
+Resultado: ~15% de positivos por ano (2023–2025).
+
+**Exclusões do cálculo do target:**
+- `capacity_is_forward_fill = True` em t+1 (capacidade estimada, não publicada)
+- `srag_consolidation_flag = "recente"` em t+1 (< 45 dias — < 80% dos casos notificados)
+
+Linhas sem t+1 disponível têm `target = null` e são **mantidas** para scoring ao vivo.
+
+### 3. Split temporal (nunca aleatório)
+
+| Conjunto | Período |
+|---|---|
+| Treino | até `202412` |
+| Validação | `202501` – `202506` |
+| Teste | `202507` em diante |
+| Scoring live | `2026` |
+
+### 4. Modelos
+
+| Modelo | Script | Registro |
+|---|---|---|
+| Logistic Regression (baseline) | `src/training/train_baseline_lr.py` | MLflow + Unity Catalog |
+| LightGBM (principal) | `src/training/train_gbt.py` | MLflow + Unity Catalog |
+
+**Experimento MLflow:** `/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr`
+
+**Registry:** `ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier`
+
+**Critério de avaliação:** Precision@K(15%) — K representa os municípios que um
+gestor monitoraria num ciclo mensal; AUC-ROC mede discriminação geral.
+
+### 5. Human Gate — promoção de modelos
+
+```
+Treinamento (LR + LightGBM)
+  ↓
+evaluate.py: compara os dois modelos + @champion atual (se existir)
+  ↓
+Se não existe @champion:  promove o melhor automaticamente (first_deploy)
+Se existe @champion:
+  Novo > champion → registra como @challenger → aguarda aprovação humana no MLflow UI
+  Novo ≤ champion → no_change, champion mantido
+```
+
+Aliases ativos: `@champion`, `@challenger`
+
+### 6. Batch Scoring
+
+Frequência: semanal (job toda segunda-feira)
+
+**Política de seleção de competência** — a competência é elegível se:
+- `target = null` (sem t+1 disponível — linha de scoring ao vivo)
+- `capacity_is_forward_fill = False`
+- `srag_consolidation_flag != "recente"`
+- `data_quality_score >= 0.5`
+
+**Classificação de risco (v2 — percentis relativos por competência):**
+
+| Classe | Critério | Prevalência |
+|---|---|---|
+| `alto` | score >= P85 desta competência | ~15% |
+| `moderado` | score >= P70 desta competência | ~15% |
+| `baixo` | score < P70 desta competência | ~70% |
+
+**Modo A/B canary:**
+- 20% dos municípios → `@challenger`; 80% → `@champion`
+- Roteamento determinístico: `MD5(municipio_id) % 100 < 20`
+- Mesmo município sempre no mesmo modelo durante o período A/B
+- Ativado via `--ab` no CLI ou `ab_test=True`
+
+### 7. Data Quality Score
+
+Combina `capacity_is_forward_fill` e `srag_consolidation_flag`:
+
+| Condição | `data_quality_score` |
+|---|---|
+| Capacity real + SRAG consolidado (≥ 90 dias) | 1.0 |
+| Capacity real + SRAG estabilizando (≥ 45 dias) | 0.8 |
+| Capacity real + SRAG recente (< 45 dias) | 0.5 |
+| Capacity forward fill (qualquer flag) | 0.3 |
+
+### 8. Monitoramento
+
+**Performance monitor** (`src/monitoring/performance_monitor.py`):
+- Calcula Precision@K realizada comparando `score(T)` com `target_realizado(T+1)`
+- Backtesting histórico simulando `@champion` sobre competências passadas
+- Threshold de alerta: `Precision@K < 0.55`
+- Grava resultados em `monitoring_performance` e loga métricas no MLflow
+
+**Retrain trigger** (`src/monitoring/retrain_trigger.py`):
+- Lê `monitoring_performance`
+- **Regra principal:** `Precision@K < 0.55` por 2+ competências consecutivas
+- **Regra secundária:** queda > 15pp vs. média das competências anteriores (queda abrupta)
+- Dispara `job_health_pressure_retrain` via Jobs REST API
+
+---
+
+## Diagrama do pipeline semanal
+
+```
+Bronze: srag_ingest + hospitais_leitos_ingest (--live)
+  ↓
+Silver: capacity_municipio_mes + srag_municipio_semana (paralelo)
+  ↓
+Gold: gold_pressure_features
+  (join Capacity LEFT SRAG, forward fill, lags, target v2, quality flags)
+  ↓
+Batch Score: @champion, política de confiança, A/B canary
+  ↓
+Performance Monitor: Precision@K, AUC-PR, backtesting
+  ↓
+Retrain Trigger: regra 2 consecutivas + queda abrupta
+  ↓ (se trigger disparar)
+job_health_pressure_retrain: LR → LightGBM → evaluate → @challenger
+  ↓ (aprovação humana no MLflow UI)
+@champion atualizado
+```
+
+---
+
+## Decisões de design
+
+| Decisão | Justificativa |
+|---|---|
+| Grain mensal em vez de semanal | Suaviza atraso de notificação do SRAG; alinha com fonte de capacidade |
+| Capacity LEFT JOIN SRAG | Garante cobertura de todos os ~3.330 municípios com hospital, mesmo sem casos SRAG |
+| Métrica relativa no target (casos/leito) | Pressão relativa captura crise em município pequeno; volume absoluto não |
+| Percentil relativo no risk_class | Mantém ~15% alto risco por competência, independente do nível absoluto |
+| Forward fill de capacity | Leitos mudam < 1% mês a mês — proxy metodologicamente defensável |
+| Roteamento A/B por MD5(municipio_id) | Determinístico: mesmo município sempre no mesmo modelo |
+| Precision@K como critério de promoção | Mede utilidade operacional real; AUC-ROC mede discriminação mas não ação |
+| Human gate para promoção a @champion | Modelo de saúde pública exige revisão humana antes de impactar decisões |
 
 ---
 
 ## Roadmap de fases
 
-### Fase 1 — MVP técnico (atual)
-- Ingestão CNES + SRAG
-- Agregação município-semana
-- Target v1
-- Baseline logística
-- Score batch semanal
-- Dashboard simples
+### Fase 1 — MVP técnico (concluída)
+- Ingestão SRAG + Hospitais e Leitos
+- Medallion Bronze → Silver → Gold
+- Target v2 (casos_por_leito, percentil 85)
+- Baseline Logistic Regression + LightGBM
+- Batch scoring semanal com A/B canary
+- Performance monitor + retrain trigger
+- CI/CD via GitHub Actions
 
-### Fase 2 — Robustez analítica
-- Gradient boosted trees
-- Rolling validation
-- Monitor de drift
-- Explainability (SHAP)
-- Tuning de percentis do target
+### Fase 2 — Robustez e latência
+- Integração InfoGripe (reduz atraso para 1–2 semanas)
+- Registro de Ocupação Hospitalar (capacidade operacional vs. instalada)
+- CNES Estabelecimentos (enriquecimento de features)
+- SHAP para explicabilidade dos drivers de risco
+- Rolling validation (backtesting completo)
 
 ### Fase 3 — Maturidade operacional
-- Champion/challenger
-- Alertas automáticos
-- Retraining programado
-- Auditoria de qualidade
-- Benchmark com fonte adicional
+- Dashboard de visualização por município/UF
+- Alertas automáticos por e-mail/Slack
+- Benchmark com fontes adicionais (InfoGripe, SIM)
+- Auditoria de qualidade de dados automatizada

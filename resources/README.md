@@ -39,13 +39,11 @@ databricks bundle deploy --target prod
 
 ## Variáveis
 
-| Variável    | Default                    | Descrição                        |
-|-------------|----------------------------|----------------------------------|
-| catalog     | ds_dev_db                  | Unity Catalog catalog            |
-| schema      | dev_christian_van_bellen   | Schema do projeto                |
-| cluster_id  | (obrigatório)              | ID do cluster DBR ML             |
+| Variável | Default | Descrição |
+|---|---|---|
+| `catalog` | `ds_dev_db` | Unity Catalog catalog |
+| `schema` | `dev_christian_van_bellen` | Schema do projeto |
 
-Configurar cluster_id no databricks.yml ou via:
-```bash
-databricks bundle deploy --var cluster_id=<ID>
-```
+Os Jobs usam **clusters efêmeros** (`job_cluster_key`) — não é necessário
+configurar um cluster fixo. Cada execução provisiona e destrói automaticamente
+um cluster `i3.xlarge` com DBR 16.4 ML.
