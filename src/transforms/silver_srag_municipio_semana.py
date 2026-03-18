@@ -33,7 +33,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import TABLE_BRONZE_SRAG, TABLE_SILVER_SRAG
+from config import CATALOG, SCHEMA, TABLE_BRONZE_SRAG, TABLE_SILVER_SRAG
+from quality.checks import checks_silver_srag
+from quality.runner import run_checks
 
 # ── configuração ────────────────────────────────────────────────
 
@@ -218,6 +220,14 @@ def transformar(spark: SparkSession):
     df = _agregar(df)
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
+
+    df = run_checks(
+        spark,
+        df,
+        checks=checks_silver_srag(),
+        table_name=TABLE_SILVER_SRAG,
+        quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_silver_srag",
+    )
 
     print(f"\nGravando em {TABLE_SILVER_SRAG} ...")
     spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SILVER_SRAG} USING DELTA")

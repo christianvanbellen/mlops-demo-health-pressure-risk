@@ -33,6 +33,9 @@ dependencies = [
 
   # Databricks SDK (trigger de Jobs)
   "databricks-sdk>=0.28.0",
+
+  # Qualidade de dados
+  "databricks-labs-dqx>=0.5.0",
 ]
 
 [project.optional-dependencies]

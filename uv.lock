@@ -549,6 +549,33 @@ wheels = [
 ]
 
 [[package]]
+name = "databricks-labs-blueprint"
+version = "0.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "databricks-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/d0/9d818b50dc4fa86a9b5fdc0d74b96eacbd06410d7bd10b9e5f75dc416e35/databricks_labs_blueprint-0.9.3.tar.gz", hash = "sha256:a40628c0d58b6a9c8cf776b3ffa31237a8eec2f4d7a21142464cd2c285a2cd61", size = 76667, upload-time = "2024-11-14T13:33:23.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/f7/4e77bdcd83fb5e53d79526f4532dd05af53e5dcbb2c2854ae536baecf133/databricks_labs_blueprint-0.9.3-py3-none-any.whl", hash = "sha256:0e640953deef5e41bc324d1035ce8c5d549023178ce50708700ab34c438451f3", size = 61549, upload-time = "2024-11-14T13:33:21.818Z" },
+]
+
+[[package]]
+name = "databricks-labs-dqx"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "databricks-labs-blueprint" },
+    { name = "databricks-sdk" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0c/d9/dfd3a07892ef90dc389b3cdfa483ce2549838cb3ec384bb2bd3b1a6a85a5/databricks_labs_dqx-0.13.0.tar.gz", hash = "sha256:51e25471ef9c911951446e48335352500edd8d427eb03d6ca9531cdb79692a21", size = 245314, upload-time = "2026-02-09T17:18:30.022Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/d8/624a3b6bc138c4844f28bd369a1db4724907f1a3238cc34887d52db286c8/databricks_labs_dqx-0.13.0-py3-none-any.whl", hash = "sha256:5a248d0420ed26f161669245e412b5217f0ad2e786a46460c5492b49189478f5", size = 299235, upload-time = "2026-02-09T17:18:28.055Z" },
+]
+
+[[package]]
 name = "databricks-sdk"
 version = "0.101.0"
 source = { registry = "https://pypi.org/simple" }
@@ -865,6 +892,7 @@ name = "health-pressure-risk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "databricks-labs-dqx" },
     { name = "databricks-sdk" },
     { name = "lightgbm" },
     { name = "matplotlib" },
@@ -887,6 +915,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "databricks-labs-dqx", specifier = ">=0.5.0" },
     { name = "databricks-sdk", specifier = ">=0.28.0" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.0" },
     { name = "lightgbm", specifier = ">=4.5.0" },

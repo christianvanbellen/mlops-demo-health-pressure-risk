@@ -13,7 +13,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import LANDING_PATH, TABLE_BRONZE_HOSPITAIS_LEITOS
+from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_HOSPITAIS_LEITOS
+from quality.checks import checks_bronze_hospitais_leitos
+from quality.runner import run_checks
 
 # ── configuração ────────────────────────────────────────────────
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos"
@@ -185,6 +187,14 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"], config["sep"])
 
         print(f"  Linhas lidas: {df.count():,}")
+
+        df = run_checks(
+            spark,
+            df,
+            checks=checks_bronze_hospitais_leitos(),
+            table_name=TABLE_BRONZE_HOSPITAIS_LEITOS,
+            quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_bronze_hospitais_leitos",
+        )
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:

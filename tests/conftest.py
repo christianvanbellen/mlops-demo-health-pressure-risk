@@ -23,6 +23,12 @@ PYSPARK_MOCKS = [
     "pyspark.ml.functions",
     "databricks.feature_engineering",
     "mlflow.spark",
+    # DQX — não disponível fora do cluster Databricks
+    "databricks.labs.dqx",
+    "databricks.labs.dqx.engine",
+    "databricks.labs.dqx.col_functions",
+    "databricks.labs.dqx.row_checks",
+    "databricks.sdk",
 ]
 
 for mod in PYSPARK_MOCKS:

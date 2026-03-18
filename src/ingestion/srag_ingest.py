@@ -12,7 +12,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import LANDING_PATH, TABLE_BRONZE_SRAG
+from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_SRAG
+from quality.checks import checks_bronze_srag
+from quality.runner import run_checks
 
 # ── configuração ────────────────────────────────────────────────
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026"
@@ -184,6 +186,14 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"])
 
         print(f"  Linhas lidas: {df.count():,}")
+
+        df = run_checks(
+            spark,
+            df,
+            checks=checks_bronze_srag(),
+            table_name=TABLE_BRONZE_SRAG,
+            quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_bronze_srag",
+        )
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:

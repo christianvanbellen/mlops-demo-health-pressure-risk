@@ -73,7 +73,16 @@ from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
-from config import TABLE_GOLD_FEATURES, TABLE_SILVER_CAPACITY, TABLE_SILVER_SRAG, TARGET_PERCENTILE
+from config import (
+    CATALOG,
+    SCHEMA,
+    TABLE_GOLD_FEATURES,
+    TABLE_SILVER_CAPACITY,
+    TABLE_SILVER_SRAG,
+    TARGET_PERCENTILE,
+)
+from quality.checks import checks_gold_features
+from quality.runner import run_checks
 
 # ── configuração ────────────────────────────────────────────────
 
@@ -558,6 +567,14 @@ def transformar(spark: SparkSession):
     if table_exists:
         spark.sql(f"DROP TABLE IF EXISTS {TABLE_GOLD_FEATURES}")
         print("  Tabela anterior removida")
+
+    df = run_checks(
+        spark,
+        df,
+        checks=checks_gold_features(),
+        table_name=TABLE_GOLD_FEATURES,
+        quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_gold_features",
+    )
 
     print(f"\nCriando feature table {TABLE_GOLD_FEATURES} ...")
     fe.create_table(

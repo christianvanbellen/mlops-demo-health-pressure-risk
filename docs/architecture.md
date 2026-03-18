@@ -209,7 +209,48 @@ Combina `capacity_is_forward_fill` e `srag_consolidation_flag`:
 | Capacity real + SRAG recente (< 45 dias) | 0.5 |
 | Capacity forward fill (qualquer flag) | 0.3 |
 
-### 8. Monitoramento
+### 8. Camada de Qualidade de Dados (DQX)
+
+**Databricks Labs DQX** (`databricks-labs-dqx>=0.5.0`) é integrado antes de cada write em todas as camadas da Medallion.
+
+**Padrão:**
+
+```python
+from quality.runner import run_checks
+from quality.checks import checks_bronze_srag
+
+df = run_checks(spark, df,
+                checks=checks_bronze_srag(),
+                table_name=TABLE_BRONZE_SRAG,
+                quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_bronze_srag")
+df.write...saveAsTable(TABLE_BRONZE_SRAG)
+```
+
+`DQEngine.apply_checks_by_metadata_and_split(df, checks)` separa o DataFrame em dois:
+- `valid_df` — segue para o write
+- `quarantine_df` — gravado em append na tabela de quarentena com timestamps e nome da tabela de destino
+
+**Suítes de checks (`src/quality/checks.py`):**
+
+| Tabela | Checks error (quarentena) | Checks warn (flag) |
+|---|---|---|
+| `bronze_srag` | `CO_MUN_RES`, `DT_NOTIFIC`, `_snapshot_date`, `_ano_arquivo` não nulos | `DT_SIN_PRI` formato data válido |
+| `bronze_hospitais_leitos` | `COMP`, `CNES`, `_snapshot_date`, `_ano_arquivo` não nulos | `UF` não nulo |
+| `silver_srag_municipio_semana` | `municipio_id`, `semana_epidemiologica`, `competencia` não nulos | `srag_consolidation_flag` em lista válida |
+| `silver_capacity_municipio_mes` | `municipio_id`, `competencia` não nulos; `leitos_totais >= 0` | `capacity_is_forward_fill` não nulo |
+| `gold_pressure_features` | `municipio_id`, `competencia` não nulos; `casos_por_leito >= 0` | `data_quality_score` em [0,1]; `leitos_totais >= 10` |
+
+**Tabelas de quarentena** (criadas automaticamente em append):
+
+| Tabela quarentena | Origem |
+|---|---|
+| `quarantine_bronze_srag` | `srag_ingest.py` |
+| `quarantine_bronze_hospitais_leitos` | `hospitais_leitos_ingest.py` |
+| `quarantine_silver_srag` | `silver_srag_municipio_semana.py` |
+| `quarantine_silver_capacity` | `silver_capacity_municipio_mes.py` |
+| `quarantine_gold_features` | `gold_pressure_features.py` |
+
+### 9. Monitoramento
 
 **Performance monitor** (`src/monitoring/performance_monitor.py`):
 - Calcula Precision@K realizada comparando `score(T)` com `target_realizado(T+1)`
