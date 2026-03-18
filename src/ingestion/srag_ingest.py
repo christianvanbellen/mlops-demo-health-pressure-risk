@@ -2,18 +2,19 @@
 # Ingestão Bronze — SRAG / SIVEP-Gripe
 # Fonte: https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026
 
+import os
 import re
+import sys
 from datetime import datetime
 
 import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-TABLE = f"{CATALOG}.{SCHEMA}.bronze_srag"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import LANDING_PATH, TABLE_BRONZE_SRAG
 
+# ── configuração ────────────────────────────────────────────────
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026"
 
 # URLs de fallback — atualizadas em 2026-03
@@ -98,7 +99,7 @@ def scrape_urls() -> dict:
 
 def baixar_arquivo(url: str, ano: int, fmt: str) -> str:
     """Baixa o arquivo para /tmp e retorna o caminho local."""
-    caminho = f"/Volumes/ds_dev_db/dev_christian_van_bellen/landing/srag_{ano}.{fmt}"
+    caminho = f"{LANDING_PATH}/srag_{ano}.{fmt}"
     print(f"  Baixando {ano} ({fmt}) de {url} ...")
     r = requests.get(url, timeout=300)
     r.raise_for_status()
@@ -164,7 +165,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
     urls_disponiveis = scrape_urls()
     print(f"URLs encontradas: {list(urls_disponiveis.keys())}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_SRAG} USING DELTA")
 
     for ano, config in ANOS.items():
         if apenas_live and not config["is_live"]:
@@ -186,13 +187,15 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:
-            spark.sql(f"DELETE FROM {TABLE} WHERE CAST(_ano_arquivo AS INT) = {ano}")
+            spark.sql(f"DELETE FROM {TABLE_BRONZE_SRAG} WHERE CAST(_ano_arquivo AS INT) = {ano}")
         except Exception as e:
             print(
                 f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
             )
-        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(TABLE)
-        print(f"  ✓ Gravado em {TABLE}")
+        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
+            TABLE_BRONZE_SRAG
+        )
+        print(f"  ✓ Gravado em {TABLE_BRONZE_SRAG}")
 
     print("\n✓ Ingestão SRAG concluída.")
 
@@ -204,8 +207,8 @@ def show_summary(spark: SparkSession):
     - range de DT_NOTIFIC por ano
     Útil para validar a ingestão após execução.
     """
-    print(f"\n── Resumo da tabela {TABLE} ──")
-    df = spark.table(TABLE)
+    print(f"\n── Resumo da tabela {TABLE_BRONZE_SRAG} ──")
+    df = spark.table(TABLE_BRONZE_SRAG)
 
     resumo = (
         df.groupBy("_ano_arquivo")

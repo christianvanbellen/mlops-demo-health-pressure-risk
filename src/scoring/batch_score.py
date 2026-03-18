@@ -12,8 +12,11 @@
 # - Para ativar A/B: passar ab_test=True ou flag --ab no CLI
 
 import hashlib
+import os
+import sys
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mlflow.lightgbm
 import mlflow.spark
 from mlflow.tracking import MlflowClient
@@ -21,46 +24,21 @@ from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from config import (
+    AB_CHALLENGER_PCT,
+    FEATURE_COLS,
+    MODEL_NAME,
+    SCORING_MIN_QUALITY,
+    TARGET_COL,
+)
+from config import (  # noqa: E402
+    TABLE_GOLD_FEATURES as TABLE_FEATURES,
+)
+from config import (
+    TABLE_GOLD_SCORING as TABLE_SCORING,
+)
+
 # ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-
-TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-TABLE_SCORING = f"{CATALOG}.{SCHEMA}.gold_pressure_scoring"
-MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-
-TARGET_COL = "target_alta_pressao"
-
-FEATURE_COLS = [
-    "casos_por_leito",
-    "casos_por_leito_lag1",
-    "casos_por_leito_lag2",
-    "casos_por_leito_lag3",
-    "casos_por_leito_ma2",
-    "casos_por_leito_ma3",
-    "casos_srag_lag1",
-    "casos_srag_lag2",
-    "obitos_por_leito",
-    "uti_por_leito_uti",
-    "share_idosos",
-    "growth_mom",
-    "growth_3m",
-    "acceleration",
-    "rolling_std_3m",
-    "leitos_totais",
-    "leitos_uti",
-    "num_hospitais",
-    "mes",
-    "quarter",
-    "is_semester1",
-    "is_rainy_season",
-]
-
-# A/B canary: 20% dos municípios vai para @challenger se existir
-AB_CHALLENGER_PCT = 0.20
-
-# threshold mínimo de data_quality_score para uma competência ser scored
-SCORING_MIN_QUALITY = 0.5
 
 
 # ── alias e modelo ───────────────────────────────────────────────

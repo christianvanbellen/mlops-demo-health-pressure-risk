@@ -77,6 +77,7 @@
 
 import os
 import re
+import sys
 import zipfile
 from datetime import datetime
 from ftplib import FTP
@@ -85,14 +86,12 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_CNES
 
-TABLE_ESTAB = f"{CATALOG}.{SCHEMA}.bronze_cnes_estabelecimentos"
+# ── configuração ────────────────────────────────────────────────
 TABLE_LEITO = f"{CATALOG}.{SCHEMA}.bronze_cnes_leitos"
 
-LANDING = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
 FTP_HOST = "ftp.datasus.gov.br"
 FTP_DIR = "/cnes/"
 PAGINA_FONTE = "https://cnes.datasus.gov.br/pages/downloads/arquivosBaseDados.jsp"
@@ -199,7 +198,7 @@ def baixar_e_extrair(competencia: str) -> tuple:
     Retorna (caminho_estab, caminho_leito, url_usada).
     """
     nome_zip = _nome_zip(competencia)
-    caminho_zip = f"{LANDING}/cnes_{competencia}.zip"
+    caminho_zip = f"{LANDING_PATH}/cnes_{competencia}.zip"
     url_ftp = f"ftp://{FTP_HOST}{FTP_DIR}{nome_zip}"
 
     # tentativa 1: ftplib (mais confiável em ambientes sem proxy HTTP)
@@ -224,8 +223,8 @@ def baixar_e_extrair(competencia: str) -> tuple:
     # extração dos dois CSVs relevantes
     nome_estab = f"tbEstabelecimento{competencia}.csv"
     nome_leito = f"tbLeito{competencia}.csv"
-    caminho_estab = f"{LANDING}/cnes_estab_{competencia}.csv"
-    caminho_leito = f"{LANDING}/cnes_leito_{competencia}.csv"
+    caminho_estab = f"{LANDING_PATH}/cnes_estab_{competencia}.csv"
+    caminho_leito = f"{LANDING_PATH}/cnes_leito_{competencia}.csv"
 
     with zipfile.ZipFile(caminho_zip) as zf:
         arquivos_zip = zf.namelist()
@@ -383,7 +382,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
     competencias_disponiveis = scrape_urls()
     print(f"Competências mapeadas: {competencias_disponiveis}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_ESTAB} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_CNES} USING DELTA")
     spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_LEITO} USING DELTA")
 
     for ano, config in ANOS.items():
@@ -407,7 +406,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
                 spark, caminho_estab, ano, url, config["is_live"], competencia
             )
             print(f"  Estabelecimentos lidos: {df_estab.count():,}")
-            _gravar_tabela(spark, df_estab, TABLE_ESTAB, ano)
+            _gravar_tabela(spark, df_estab, TABLE_BRONZE_CNES, ano)
 
             # ── tbLeito ──
             df_leito = ler_e_enriquecer_leito(
@@ -433,7 +432,7 @@ def show_summary(spark: SparkSession):
     Consulta as duas tabelas Bronze e imprime contagens por ano/uf.
     Útil para validar a ingestão após execução.
     """
-    for table, group_col in [(TABLE_ESTAB, "uf"), (TABLE_LEITO, "cnes_id")]:
+    for table, group_col in [(TABLE_BRONZE_CNES, "uf"), (TABLE_LEITO, "cnes_id")]:
         print(f"\n── Resumo da tabela {table} ──")
         df = spark.table(table)
         resumo = (

@@ -11,25 +11,25 @@
 # - Job precisa existir com nome RETRAIN_JOB_NAME para disparo automático
 
 import os
+import sys
 from datetime import date
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mlflow
 import pandas as pd
 import requests
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
-# ── configuração ─────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-TABLE_MONITOR = f"{CATALOG}.{SCHEMA}.monitoring_performance"
-
-# Regra de trigger: degradação confirmada
-PRECISION_K_THRESHOLD = 0.55  # mesmo threshold do monitor
-MIN_CONSECUTIVE_BELOW = 2  # competências consecutivas abaixo do threshold
-
-# Databricks Jobs API
-RETRAIN_JOB_NAME = "job_health_pressure_retrain"  # nome do Job no workspace
+from config import (
+    MIN_CONSECUTIVE_BELOW,
+    MLFLOW_EXPERIMENT,
+    PRECISION_K_THRESHOLD,
+    RETRAIN_JOB_NAME,
+)
+from config import (  # noqa: E402
+    TABLE_GOLD_MONITOR as TABLE_MONITOR,
+)
 
 
 # ── carregamento do histórico ────────────────────────────────────
@@ -323,8 +323,7 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
         print("\n  ✓ Sem trigger — retraining não necessário")
 
     # 4. loga decisão no MLflow
-    EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
-    mlflow.set_experiment(EXPERIMENT)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
     with mlflow.start_run(run_name=f"retrain_trigger_{date.today()}") as run:
         mlflow.log_params(

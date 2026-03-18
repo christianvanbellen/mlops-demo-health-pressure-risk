@@ -11,9 +11,11 @@
 # - Scores históricos simulados via @champion para backtesting
 
 import os
+import sys
 import tempfile
 from datetime import date
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -22,47 +24,26 @@ from mlflow.tracking import MlflowClient
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from config import (
+    FEATURE_COLS,
+    MLFLOW_EXPERIMENT,
+    MODEL_NAME,
+    PRECISION_K_THRESHOLD,
+    TARGET_COL,
+)
+from config import (  # noqa: E402
+    TABLE_GOLD_FEATURES as TABLE_FEATURES,
+)
+from config import (
+    TABLE_GOLD_MONITOR as TABLE_MONITOR,
+)
+from config import (
+    TABLE_GOLD_SCORING as TABLE_SCORING,
+)
+
 # ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-
-TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-TABLE_SCORING = f"{CATALOG}.{SCHEMA}.gold_pressure_scoring"
-TABLE_MONITOR = f"{CATALOG}.{SCHEMA}.monitoring_performance"
-MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-
-TARGET_COL = "target_alta_pressao"
-
-FEATURE_COLS = [
-    "casos_por_leito",
-    "casos_por_leito_lag1",
-    "casos_por_leito_lag2",
-    "casos_por_leito_lag3",
-    "casos_por_leito_ma2",
-    "casos_por_leito_ma3",
-    "casos_srag_lag1",
-    "casos_srag_lag2",
-    "obitos_por_leito",
-    "uti_por_leito_uti",
-    "share_idosos",
-    "growth_mom",
-    "growth_3m",
-    "acceleration",
-    "rolling_std_3m",
-    "leitos_totais",
-    "leitos_uti",
-    "num_hospitais",
-    "mes",
-    "quarter",
-    "is_semester1",
-    "is_rainy_season",
-]
-
 # critérios de qualidade para target válido no monitor
 VALID_CONSOLIDATION = ["consolidado", "estabilizando"]
-
-# threshold de alerta — Precision@K abaixo disso dispara retraining
-PRECISION_K_THRESHOLD = 0.55
 
 
 # ── simulação histórica ──────────────────────────────────────────
@@ -466,9 +447,7 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
 
     Retorna dict com status, trigger_retraining e métricas recentes.
     """
-    experiment_path = (
-        experiment_path or "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
-    )
+    experiment_path = experiment_path or MLFLOW_EXPERIMENT
     mlflow.set_experiment(experiment_path)
 
     with mlflow.start_run(run_name=f"performance_monitor_{date.today()}") as run:

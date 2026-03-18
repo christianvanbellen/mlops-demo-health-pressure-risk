@@ -65,17 +65,17 @@
 #   srag_consolidation_flag      = "consolidado" | "estabilizando" | "recente"
 #   data_quality_score           = 0.3 | 0.5 | 0.8 | 1.0
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
+from config import TABLE_GOLD_FEATURES, TABLE_SILVER_CAPACITY, TABLE_SILVER_SRAG, TARGET_PERCENTILE
 
-TABLE_SRC_SRAG = f"{CATALOG}.{SCHEMA}.silver_srag_municipio_semana"
-TABLE_SRC_CAP = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
-TABLE_DST = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
+# ── configuração ────────────────────────────────────────────────
 
 # Window padrão do pipeline — reusado por _lags, _dinamica e _target
 MUNICIPIO_W = Window.partitionBy("municipio_id").orderBy("competencia")
@@ -446,7 +446,7 @@ def _calcular_target(df):
     # passo 4: percentil 85 nacional de casos_por_leito_next por competencia
     # (linhas com casos_por_leito_next null são ignoradas pelo percentile_approx)
     p85 = df.groupBy("competencia").agg(
-        F.percentile_approx("casos_por_leito_next", 0.85).alias("_p85_nacional"),
+        F.percentile_approx("casos_por_leito_next", TARGET_PERCENTILE).alias("_p85_nacional"),
     )
 
     # passo 5: join do p85 de volta ao df principal
@@ -466,7 +466,7 @@ def _calcular_target(df):
         # passo 7: colunas de governança
         .withColumn("target_definition_version", F.lit("v2"))
         .withColumn("target_metric", F.lit("casos_por_leito"))
-        .withColumn("target_percentile", F.lit(0.85))
+        .withColumn("target_percentile", F.lit(TARGET_PERCENTILE))
         .drop("casos_por_leito_next", "_p85_nacional")
     )
     return df
@@ -520,8 +520,8 @@ def _adicionar_metadados(df):
     """Adiciona colunas de rastreabilidade do processamento."""
     return (
         df.withColumn("_processed_at", F.current_timestamp())
-        .withColumn("_source_srag", F.lit(TABLE_SRC_SRAG))
-        .withColumn("_source_cap", F.lit(TABLE_SRC_CAP))
+        .withColumn("_source_srag", F.lit(TABLE_SILVER_SRAG))
+        .withColumn("_source_cap", F.lit(TABLE_SILVER_CAPACITY))
     )
 
 
@@ -533,8 +533,8 @@ def transformar(spark: SparkSession):
     fe = FeatureEngineeringClient()
 
     print("Lendo fontes silver ...")
-    srag = spark.table(TABLE_SRC_SRAG)
-    cap = spark.table(TABLE_SRC_CAP)
+    srag = spark.table(TABLE_SILVER_SRAG)
+    cap = spark.table(TABLE_SILVER_CAPACITY)
     print(f"  srag: {srag.count():,} linhas | cap: {cap.count():,} linhas")
 
     df = _agregar_srag_mensal(srag)
@@ -550,18 +550,18 @@ def transformar(spark: SparkSession):
 
     # Feature Store — drop e recria para garantir schema e primary keys limpos
     try:
-        fe.get_table(TABLE_DST)
+        fe.get_table(TABLE_GOLD_FEATURES)
         table_exists = True
     except Exception:
         table_exists = False
 
     if table_exists:
-        spark.sql(f"DROP TABLE IF EXISTS {TABLE_DST}")
+        spark.sql(f"DROP TABLE IF EXISTS {TABLE_GOLD_FEATURES}")
         print("  Tabela anterior removida")
 
-    print(f"\nCriando feature table {TABLE_DST} ...")
+    print(f"\nCriando feature table {TABLE_GOLD_FEATURES} ...")
     fe.create_table(
-        name=TABLE_DST,
+        name=TABLE_GOLD_FEATURES,
         primary_keys=["municipio_id", "competencia"],
         df=df,
         description=(
@@ -571,7 +571,7 @@ def transformar(spark: SparkSession):
             "target_definition_version=v2."
         ),
     )
-    print(f"✓ Feature table {TABLE_DST} criada.")
+    print(f"✓ Feature table {TABLE_GOLD_FEATURES} criada.")
 
 
 def show_summary(spark: SparkSession):
@@ -582,7 +582,7 @@ def show_summary(spark: SparkSession):
     - estatísticas de casos_por_leito
     - correlação das features com o target
     """
-    df = spark.table(TABLE_DST)
+    df = spark.table(TABLE_GOLD_FEATURES)
 
     print(f"Total de linhas: {df.count():,}")
     print(f"Municípios distintos:   {df.select('municipio_id').distinct().count():,}")

@@ -24,15 +24,16 @@
 #   a contagem de descartados é sempre logada. A remoção silenciosa é evitada
 #   para facilitar auditoria e detecção de problemas na bronze.
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
+from config import TABLE_BRONZE_HOSPITAIS_LEITOS, TABLE_SILVER_CAPACITY
 
-TABLE_SRC = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
-TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_capacity_municipio_mes"
+# ── configuração ────────────────────────────────────────────────
 
 # Colunas numéricas da bronze (chegam como string) — nulos e "" viram 0
 COLUNAS_NUMERICAS = [
@@ -188,8 +189,8 @@ def transformar(spark: SparkSession):
     """
     Executa o pipeline completo Bronze → Silver de capacidade hospitalar.
     """
-    print(f"Lendo {TABLE_SRC} ...")
-    df = spark.table(TABLE_SRC)
+    print(f"Lendo {TABLE_BRONZE_HOSPITAIS_LEITOS} ...")
+    df = spark.table(TABLE_BRONZE_HOSPITAIS_LEITOS)
     print(f"  Registros na bronze: {df.count():,}")
 
     df = _resolver_municipio_id(df)
@@ -199,15 +200,15 @@ def transformar(spark: SparkSession):
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
 
-    print(f"\nGravando em {TABLE_DST} ...")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_DST} USING DELTA")
+    print(f"\nGravando em {TABLE_SILVER_CAPACITY} ...")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SILVER_CAPACITY} USING DELTA")
     (
         df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
-        .saveAsTable(TABLE_DST)
+        .saveAsTable(TABLE_SILVER_CAPACITY)
     )
-    print(f"✓ {TABLE_DST} atualizada.")
+    print(f"✓ {TABLE_SILVER_CAPACITY} atualizada.")
 
 
 def show_summary(spark: SparkSession):
@@ -216,8 +217,8 @@ def show_summary(spark: SparkSession):
     - contagem de linhas por competencia
     - totais nacionais de leitos e UTI
     """
-    print(f"\n── Resumo da tabela {TABLE_DST} ──")
-    df = spark.table(TABLE_DST)
+    print(f"\n── Resumo da tabela {TABLE_SILVER_CAPACITY} ──")
+    df = spark.table(TABLE_SILVER_CAPACITY)
 
     print(f"  Total de linhas: {df.count():,}")
     print(f"  Municípios distintos: {df.select('municipio_id').distinct().count():,}")

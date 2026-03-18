@@ -1,0 +1,50 @@
+catalog: ds_prod_db
+schema:  prod_health_pressure
+
+tables:
+  bronze_srag:             ds_dev_db.dev_christian_van_bellen.bronze_srag
+  bronze_hospitais_leitos: ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
+  bronze_cnes:             ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos
+  silver_srag:             ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
+  silver_capacity:         ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
+  gold_features:           ds_dev_db.dev_christian_van_bellen.gold_pressure_features
+  gold_scoring:            ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
+  gold_monitoring:         ds_dev_db.dev_christian_van_bellen.monitoring_performance
+
+landing_path: /Volumes/ds_dev_db/dev_christian_van_bellen/landing
+
+mlflow:
+  experiment_path: /Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr
+
+model:
+  name:             ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier
+  retrain_job_name: job_health_pressure_retrain
+
+training:
+  train_end:  "202412"
+  val_end:    "202506"
+  test_start: "202507"
+
+thresholds:
+  target_percentile:     0.85
+  precision_k_threshold: 0.55
+  min_consecutive_below: 2
+  scoring_min_quality:   0.5
+  ab_challenger_pct:     0.20
+
+lgbm:
+  num_boost_round:       500
+  early_stopping_rounds: 50
+  params:
+    objective:         binary
+    metric:            binary_logloss
+    boosting_type:     gbdt
+    num_leaves:        63
+    learning_rate:     0.05
+    feature_fraction:  0.8
+    bagging_fraction:  0.8
+    bagging_freq:      5
+    min_child_samples: 20
+    reg_alpha:         0.1
+    reg_lambda:        0.1
+    verbose:           -1

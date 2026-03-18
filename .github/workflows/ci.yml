@@ -51,6 +51,7 @@ jobs:
         run: uv run pytest tests/ -v --tb=short
         env:
           PYTHONPATH: src
+          APP_ENV: dev
 
   # ── Job 2: Validate bundle (todos os pushes) ─────────
   dab-validate:

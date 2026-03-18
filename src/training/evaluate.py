@@ -18,6 +18,7 @@
 
 import json
 import os
+import sys
 import tempfile
 import uuid
 from datetime import datetime
@@ -33,44 +34,21 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-
-TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
-
-TARGET_COL = "target_alta_pressao"
-
-FEATURE_COLS = [
-    "casos_por_leito",
-    "casos_por_leito_lag1",
-    "casos_por_leito_lag2",
-    "casos_por_leito_lag3",
-    "casos_por_leito_ma2",
-    "casos_por_leito_ma3",
-    "casos_srag_lag1",
-    "casos_srag_lag2",
-    "obitos_por_leito",
-    "uti_por_leito_uti",
-    "share_idosos",
-    "growth_mom",
-    "growth_3m",
-    "acceleration",
-    "rolling_std_3m",
-    "leitos_totais",
-    "leitos_uti",
-    "num_hospitais",
-    "mes",
-    "quarter",
-    "is_semester1",
-    "is_rainy_season",
-]
-
-TRAIN_END = "202412"
-VAL_END = "202506"
-TEST_START = "202507"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    FEATURE_COLS,
+    MODEL_NAME,
+    TARGET_COL,
+    TEST_START,
+    TRAIN_END,
+    VAL_END,
+)
+from config import (
+    MLFLOW_EXPERIMENT as EXPERIMENT,
+)
+from config import (  # noqa: E402
+    TABLE_GOLD_FEATURES as TABLE_FEATURES,
+)
 
 
 # ── aliases ─────────────────────────────────────────────────────

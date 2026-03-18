@@ -5,7 +5,6 @@
 # EXPERIMENT path para aparecerem lado a lado no UI de comparação.
 #
 # Decisões de design:
-#   scale_pos_weight = 5.5  (~negativos/positivos = 51462/9201)
 #     Compensa o desbalanceamento de ~15% de positivos sem oversample/undersample.
 #   Early stopping em val (50 rounds) — evita overfitting sem tuning manual de rounds.
 #   Feature importance por gain — mais estável que split count para features correlatas.
@@ -18,6 +17,7 @@
 #   Teste  : 202507+                (segundo semestre 2025 em diante)
 
 import os
+import sys
 import tempfile
 
 import lightgbm as lgb
@@ -35,61 +35,24 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-
-TABLE_FEATURES = f"{CATALOG}.{SCHEMA}.gold_pressure_features"
-MODEL_NAME = f"{CATALOG}.{SCHEMA}.pressure_risk_classifier"
-EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
-
-TARGET_COL = "target_alta_pressao"
-
-FEATURE_COLS = [
-    "casos_por_leito",
-    "casos_por_leito_lag1",
-    "casos_por_leito_lag2",
-    "casos_por_leito_lag3",
-    "casos_por_leito_ma2",
-    "casos_por_leito_ma3",
-    "casos_srag_lag1",
-    "casos_srag_lag2",
-    "obitos_por_leito",
-    "uti_por_leito_uti",
-    "share_idosos",
-    "growth_mom",
-    "growth_3m",
-    "acceleration",
-    "rolling_std_3m",
-    "leitos_totais",
-    "leitos_uti",
-    "num_hospitais",
-    "mes",
-    "quarter",
-    "is_semester1",
-    "is_rainy_season",
-]
-
-TRAIN_END = "202412"
-VAL_END = "202506"
-TEST_START = "202507"
-
-LGBM_PARAMS = {
-    "objective": "binary",
-    "metric": ["auc", "average_precision"],
-    "learning_rate": 0.05,
-    "num_leaves": 63,
-    "max_depth": -1,
-    "min_child_samples": 50,
-    "feature_fraction": 0.8,
-    "bagging_fraction": 0.8,
-    "bagging_freq": 5,
-    "scale_pos_weight": 5.5,  # ~negativos/positivos = 51462/9201
-    "verbose": -1,
-    "random_state": 42,
-}
-NUM_BOOST_ROUND = 500
-EARLY_STOPPING = 50
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    EARLY_STOPPING,
+    FEATURE_COLS,
+    LGBM_PARAMS,
+    MODEL_NAME,
+    NUM_BOOST_ROUND,
+    TARGET_COL,
+    TEST_START,
+    TRAIN_END,
+    VAL_END,
+)
+from config import (
+    MLFLOW_EXPERIMENT as EXPERIMENT,
+)
+from config import (  # noqa: E402
+    TABLE_GOLD_FEATURES as TABLE_FEATURES,
+)
 
 
 # ── funções ─────────────────────────────────────────────────────

@@ -3,6 +3,8 @@
 # Fonte: https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos
 
 import io
+import os
+import sys
 import zipfile
 from datetime import datetime
 
@@ -10,11 +12,10 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
-TABLE = f"{CATALOG}.{SCHEMA}.bronze_hospitais_leitos"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import LANDING_PATH, TABLE_BRONZE_HOSPITAIS_LEITOS
 
+# ── configuração ────────────────────────────────────────────────
 PAGINA_FONTE = "https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos"
 
 # URLs base por padrão de nomenclatura
@@ -87,7 +88,6 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
     Baixa o arquivo para o Volume de landing e retorna o caminho do CSV local.
     Se is_zip=True: baixa o .zip e extrai o CSV interno para o Volume.
     """
-    LANDING = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
     print(f"  Baixando {ano} ({'zip' if is_zip else fmt}) de {url} ...")
     r = requests.get(url, timeout=300)
     r.raise_for_status()
@@ -99,12 +99,12 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
             if not csvs:
                 raise ValueError(f"Nenhum CSV encontrado no zip de {ano}: {zf.namelist()}")
             nome_csv = csvs[0]
-            caminho = f"{LANDING}/hospitais_leitos_{ano}.csv"
+            caminho = f"{LANDING_PATH}/hospitais_leitos_{ano}.csv"
             with zf.open(nome_csv) as src, open(caminho, "wb") as dst:
                 dst.write(src.read())
             print(f"  ✓ CSV extraído: {nome_csv} → {caminho}")
     else:
-        caminho = f"{LANDING}/hospitais_leitos_{ano}.{fmt}"
+        caminho = f"{LANDING_PATH}/hospitais_leitos_{ano}.{fmt}"
         with open(caminho, "wb") as f:
             f.write(r.content)
         print(f"  ✓ Salvo em {caminho}")
@@ -165,7 +165,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
     urls_disponiveis = scrape_urls()
     print(f"URLs mapeadas: {list(urls_disponiveis.keys())}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_HOSPITAIS_LEITOS} USING DELTA")
 
     for ano, config in ANOS.items():
         if apenas_live and not config["is_live"]:
@@ -188,13 +188,17 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:
-            spark.sql(f"DELETE FROM {TABLE} WHERE CAST(_ano_arquivo AS INT) = {ano}")
+            spark.sql(
+                f"DELETE FROM {TABLE_BRONZE_HOSPITAIS_LEITOS} WHERE CAST(_ano_arquivo AS INT) = {ano}"
+            )
         except Exception as e:
             print(
                 f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
             )
-        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(TABLE)
-        print(f"  ✓ Gravado em {TABLE}")
+        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
+            TABLE_BRONZE_HOSPITAIS_LEITOS
+        )
+        print(f"  ✓ Gravado em {TABLE_BRONZE_HOSPITAIS_LEITOS}")
 
     print("\n✓ Ingestão Hospitais e Leitos concluída.")
 
@@ -206,8 +210,8 @@ def show_summary(spark: SparkSession):
     - range de COMP (competência) min/max por ano
     Útil para validar a ingestão após execução.
     """
-    print(f"\n── Resumo da tabela {TABLE} ──")
-    df = spark.table(TABLE)
+    print(f"\n── Resumo da tabela {TABLE_BRONZE_HOSPITAIS_LEITOS} ──")
+    df = spark.table(TABLE_BRONZE_HOSPITAIS_LEITOS)
 
     resumo = (
         df.groupBy("_ano_arquivo", "UF")

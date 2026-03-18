@@ -30,6 +30,7 @@ for mod in PYSPARK_MOCKS:
 
 # Garante que src/ está no PYTHONPATH
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+os.environ.setdefault("APP_ENV", "dev")
 
 import pytest
 import pandas as pd

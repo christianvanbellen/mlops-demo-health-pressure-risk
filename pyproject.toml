@@ -29,6 +29,7 @@ dependencies = [
 
   # HTTP (ingestão)
   "requests>=2.31.0",
+  "pyyaml>=6.0.0",
 
   # Databricks SDK (trigger de Jobs)
   "databricks-sdk>=0.28.0",

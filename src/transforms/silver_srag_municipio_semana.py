@@ -26,15 +26,16 @@
 #     silver_srag.competencia == silver_capacity.competencia
 #   Um caso notificado na semana 5 de 2025 → data_ref ≈ 2025-01-29 → competencia "202501"
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ── configuração ────────────────────────────────────────────────
-CATALOG = "ds_dev_db"
-SCHEMA = "dev_christian_van_bellen"
+from config import TABLE_BRONZE_SRAG, TABLE_SILVER_SRAG
 
-TABLE_SRC = f"{CATALOG}.{SCHEMA}.bronze_srag"
-TABLE_DST = f"{CATALOG}.{SCHEMA}.silver_srag_municipio_semana"
+# ── configuração ────────────────────────────────────────────────
 
 
 # ── funções ─────────────────────────────────────────────────────
@@ -207,8 +208,8 @@ def transformar(spark: SparkSession):
     """
     Executa o pipeline completo Bronze → Silver de casos SRAG por município × semana.
     """
-    print(f"Lendo {TABLE_SRC} ...")
-    df = spark.table(TABLE_SRC)
+    print(f"Lendo {TABLE_BRONZE_SRAG} ...")
+    df = spark.table(TABLE_BRONZE_SRAG)
 
     df = _filtrar_hospitalizados(df)
     df = _filtrar_sem_pri_valido(df)
@@ -218,15 +219,15 @@ def transformar(spark: SparkSession):
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
 
-    print(f"\nGravando em {TABLE_DST} ...")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_DST} USING DELTA")
+    print(f"\nGravando em {TABLE_SILVER_SRAG} ...")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SILVER_SRAG} USING DELTA")
     (
         df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
-        .saveAsTable(TABLE_DST)
+        .saveAsTable(TABLE_SILVER_SRAG)
     )
-    print(f"✓ {TABLE_DST} atualizada.")
+    print(f"✓ {TABLE_SILVER_SRAG} atualizada.")
 
 
 def show_summary(spark: SparkSession):
@@ -236,8 +237,8 @@ def show_summary(spark: SparkSession):
     - casos por ano (primeiros 4 caracteres de semana_epidemiologica)
     - top 5 municípios por total de casos
     """
-    print(f"\n── Resumo da tabela {TABLE_DST} ──")
-    df = spark.table(TABLE_DST)
+    print(f"\n── Resumo da tabela {TABLE_SILVER_SRAG} ──")
+    df = spark.table(TABLE_SILVER_SRAG)
 
     print(f"  Total de linhas: {df.count():,}")
     print(f"  Municípios distintos: {df.select('municipio_id').distinct().count():,}")
