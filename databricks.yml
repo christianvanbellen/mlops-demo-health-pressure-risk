@@ -6,9 +6,6 @@ variables:
     default: ds_dev_db
   schema:
     default: dev_christian_van_bellen
-  cluster_id:
-    description: "ID do cluster ML a usar nos Jobs (DBR 16.x ML)"
-    default: ""
 
 targets:
   dev:
