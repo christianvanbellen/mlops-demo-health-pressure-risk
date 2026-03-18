@@ -143,7 +143,8 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
         ...
       }
 
-    Salva feature_drift_report.html no tmpdir para logar no MLflow.
+    Evidently 0.7.x não suporta exportação HTML via Report.
+    O JSON summary é logado como substituto.
     """
     report = Report([DataDriftPreset(method="psi")])
     report.run(
@@ -151,47 +152,50 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
         current_data=cur_df[FEATURE_COLS],
     )
 
-    # salva HTML para artefato MLflow
-    html_path = os.path.join(tmpdir, "feature_drift_report.html")
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(report.get_html())
+    # Evidently 0.7.x não suporta exportação HTML via Report
+    # Logamos o JSON summary como substituto
+    html_path = None  # sem HTML nessa versão
 
-    # extrai métricas por feature — tenta múltiplas estruturas entre versões
+    # extrai métricas por feature — estrutura Evidently 0.7.x
     result = report.as_dict()
     drift_por_feature = {}
 
-    for metric in result.get("metrics", []):
-        metric_id = metric.get("metric", "")
+    try:
+        metrics = result.get("metrics", [])
+        for metric in metrics:
+            res = metric.get("result", {})
 
-        # estrutura 1: DataDriftTable (agrupa todas as colunas)
-        if "DataDriftTable" in metric_id:
-            cols = metric.get("result", {}).get("drift_by_columns", {})
-            for col, stats in cols.items():
-                drift_por_feature[col] = {
-                    "drift_detected": bool(stats.get("drift_detected", False)),
-                    "drift_score": float(stats.get("drift_score", 0.0)),
-                    "stattest": str(stats.get("stattest", "psi")),
-                }
+            # tenta drift_by_columns (estrutura mais comum)
+            drift_cols = res.get("drift_by_columns", {})
+            for col, stats in drift_cols.items():
+                if col in FEATURE_COLS:
+                    drift_por_feature[col] = {
+                        "drift_detected": bool(stats.get("drift_detected", False)),
+                        "drift_score": float(stats.get("drift_score", 0.0)),
+                        "stattest": str(stats.get("stattest_name", stats.get("stattest", "psi"))),
+                    }
+    except Exception as e:
+        print(f"  ⚠ Erro ao extrair métricas: {e}")
 
-        # estrutura 2: ColumnDriftMetric (uma entrada por coluna)
-        elif "ColumnDriftMetric" in metric_id:
-            col = metric.get("result", {}).get("column_name", "")
-            stat = metric.get("result", {})
-            if col:
-                drift_por_feature[col] = {
-                    "drift_detected": bool(stat.get("drift_detected", False)),
-                    "drift_score": float(stat.get("drift_score", 0.0)),
-                    "stattest": str(stat.get("stattest_name", "psi")),
-                }
+    # fallback: preenche features não encontradas com zeros
+    for feat in FEATURE_COLS:
+        if feat not in drift_por_feature:
+            drift_por_feature[feat] = {
+                "drift_detected": False,
+                "drift_score": 0.0,
+                "stattest": "psi",
+            }
 
-    # fallback: estrutura não reconhecida — loga dump parcial para debug
-    if not drift_por_feature:
+    # debug se nenhuma feature foi extraída com score > 0
+    n_extraidas = sum(1 for v in drift_por_feature.values() if v["drift_score"] > 0)
+    if n_extraidas == 0:
         import json as _json
 
-        print("  ⚠ Estrutura do Report não reconhecida. Dump parcial:")
-        print(_json.dumps(result.get("metrics", [])[:2], indent=2, default=str))
+        print("  ⚠ Nenhuma métrica extraída — dump parcial do result:")
+        for m in result.get("metrics", [])[:1]:
+            print(_json.dumps(m, indent=2, default=str)[:1000])
 
-    return drift_por_feature
+    return drift_por_feature, html_path
 
 
 # ── gráfico resumo ────────────────────────────────────────────────
@@ -288,7 +292,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
     print(f"\n  Calculando drift PSI ({len(FEATURE_COLS)} features)...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        drift_results = _calcular_drift(ref_df, cur_df, tmpdir)
+        drift_results, html_path = _calcular_drift(ref_df, cur_df, tmpdir)
         _plot_drift_summary(drift_results, competencia_atual, tmpdir)
 
         # ── classifica severidade ────────────────────────────────
@@ -374,7 +378,8 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
                 mlflow.log_metric(f"psi_{feat}", r["drift_score"])
 
             # artefatos
-            mlflow.log_artifact(os.path.join(tmpdir, "feature_drift_report.html"))
+            # HTML não disponível no Evidently 0.7.x
+            pass
             mlflow.log_artifact(os.path.join(tmpdir, "feature_drift_chart.png"))
             mlflow.log_artifact(json_path)
 

@@ -1024,7 +1024,7 @@ dev = [
 requires-dist = [
     { name = "databricks-labs-dqx", specifier = ">=0.5.0" },
     { name = "databricks-sdk", specifier = ">=0.28.0" },
-    { name = "evidently", specifier = ">=0.4.30" },
+    { name = "evidently", specifier = ">=0.7.0" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.0" },
     { name = "lightgbm", specifier = ">=4.5.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },

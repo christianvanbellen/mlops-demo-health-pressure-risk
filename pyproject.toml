@@ -38,7 +38,7 @@ dependencies = [
   "databricks-labs-dqx>=0.5.0",
 
   # Feature drift
-  "evidently>=0.4.30",
+  "evidently>=0.7.0",
 ]
 
 [project.optional-dependencies]
