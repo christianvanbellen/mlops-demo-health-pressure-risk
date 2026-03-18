@@ -90,6 +90,9 @@ PRECISION_K_THRESHOLD = _cfg["thresholds"]["precision_k_threshold"]
 MIN_CONSECUTIVE_BELOW = _cfg["thresholds"]["min_consecutive_below"]
 SCORING_MIN_QUALITY = _cfg["thresholds"]["scoring_min_quality"]
 AB_CHALLENGER_PCT = _cfg["thresholds"]["ab_challenger_pct"]
+DRIFT_SEASONAL_FEATURES = _cfg["thresholds"].get(
+    "drift_seasonal_features", ["mes", "quarter", "is_semester1", "is_rainy_season"]
+)
 
 # ── Parâmetros LightGBM ───────────────────────────────────────────
 LGBM_PARAMS = _cfg["lgbm"]["params"]

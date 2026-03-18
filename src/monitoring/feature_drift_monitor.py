@@ -44,6 +44,7 @@ from pyspark.sql import functions as F
 
 from config import (
     CATALOG,
+    DRIFT_SEASONAL_FEATURES,
     FEATURE_COLS,
     MLFLOW_EXPERIMENT,
     SCHEMA,
@@ -301,8 +302,12 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
         features_drift_severo = [
             f for f, r in drift_results.items() if r["drift_score"] >= PSI_SEVERE_THRESHOLD
         ]
+        # features sazonais têm drift esperado quando comparando
+        # um único mês com o histórico anual completo — excluir do share
         features_drift_moderado = [
-            f for f, r in drift_results.items() if r["drift_score"] >= PSI_WARN_THRESHOLD
+            f
+            for f, r in drift_results.items()
+            if r["drift_score"] >= PSI_WARN_THRESHOLD and f not in DRIFT_SEASONAL_FEATURES
         ]
         n_total = len(drift_results)
         n_severo = len(features_drift_severo)
@@ -336,6 +341,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
         print("  " + "─" * 52)
         print(f"  Features com drift moderado : {n_moderado}/{n_total} ({drift_share:.0%})")
         print(f"  Features com drift severo   : {n_severo}/{n_total} ({severe_share:.0%})")
+        print(f"  (features sazonais excluídas do drift_share: {DRIFT_SEASONAL_FEATURES})")
         print(f"  Status geral: {status.upper()}")
 
         # ── salva summary JSON ───────────────────────────────────
