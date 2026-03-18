@@ -20,6 +20,8 @@ jobs:
   lint-and-test:
     name: Lint and Test
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout
@@ -55,6 +57,8 @@ jobs:
     name: Validate Bundle
     runs-on: ubuntu-latest
     needs: lint-and-test
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout
@@ -94,6 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: dab-validate
     if: github.event_name == 'pull_request'
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout
@@ -130,6 +136,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: dab-validate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     environment: production
     # 'environment: production' ativa o manual approval gate
