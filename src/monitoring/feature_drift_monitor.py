@@ -151,54 +151,39 @@ def _calcular_drift(
         print(f"  ⚠ HTML não salvo: {e}")
         html_path = None
 
-    # extrai métricas via snapshot.metric_results
+    # extrai métricas via snapshot.json()
+    # estrutura real 0.7.x: uma entrada por feature com metric_name="ValueDrift(...)"
+    # e value = PSI score como float direto
+    import json as _json
+
+    data = _json.loads(snapshot.json())
     drift_por_feature = {}
-    try:
-        for metric_result in snapshot.metric_results:
-            # metric_result tem .value com os dados calculados
-            val = getattr(metric_result, "value", None)
-            if val is None:
-                continue
 
-            # tenta drift_by_columns (DataDriftTable)
-            drift_cols = getattr(val, "drift_by_columns", None)
-            if drift_cols:
-                for col, stats in drift_cols.items():
-                    if col in FEATURE_COLS:
-                        drift_por_feature[col] = {
-                            "drift_detected": bool(getattr(stats, "drift_detected", False)),
-                            "drift_score": float(getattr(stats, "drift_score", 0.0)),
-                            "stattest": str(
-                                getattr(
-                                    stats,
-                                    "stattest_name",
-                                    getattr(stats, "stattest", "psi"),
-                                )
-                            ),
-                        }
-    except Exception as e:
-        print(f"  ⚠ Erro ao extrair metric_results: {e}")
+    for metric in data.get("metrics", []):
+        metric_name = metric.get("metric_name", "")
+        config = metric.get("config", {})
+        value = metric.get("value")
 
-    # fallback: tenta via snapshot.json()
-    if not drift_por_feature:
-        try:
-            import json as _json
+        # ignora DriftedColumnsCount (sumário geral) e outras métricas
+        if "ValueDrift" not in metric_name:
+            continue
 
-            data = _json.loads(snapshot.json())
-            for metric in data.get("metrics", []):
-                result = metric.get("result", metric.get("value", {}))
-                drift_cols = result.get("drift_by_columns", {})
-                for col, stats in drift_cols.items():
-                    if col in FEATURE_COLS:
-                        drift_por_feature[col] = {
-                            "drift_detected": bool(stats.get("drift_detected", False)),
-                            "drift_score": float(stats.get("drift_score", 0.0)),
-                            "stattest": str(
-                                stats.get("stattest_name", stats.get("stattest", "psi"))
-                            ),
-                        }
-        except Exception as e:
-            print(f"  ⚠ Fallback JSON também falhou: {e}")
+        col = config.get("column", "")
+        if col not in FEATURE_COLS:
+            continue
+
+        # value é float direto = PSI score
+        psi_score = float(value) if isinstance(value, (int, float)) else 0.0
+
+        # drift detectado se PSI >= threshold (default 0.1 no Evidently)
+        threshold = float(config.get("threshold", 0.1))
+        drift_detected = psi_score >= threshold
+
+        drift_por_feature[col] = {
+            "drift_detected": drift_detected,
+            "drift_score": psi_score,
+            "stattest": config.get("method", "psi"),
+        }
 
     # preenche features não encontradas com zeros
     for feat in FEATURE_COLS:
