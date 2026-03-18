@@ -37,9 +37,6 @@ dependencies = [
 [project.optional-dependencies]
 # Dependências de desenvolvimento — não vão para o cluster
 dev = [
-  # CLI do Databricks (DAB deploy, bundle validate)
-  "databricks-cli>=0.18.0",
-
   # Qualidade de código
   "ruff>=0.4.0",
   "mypy>=1.10.0",
