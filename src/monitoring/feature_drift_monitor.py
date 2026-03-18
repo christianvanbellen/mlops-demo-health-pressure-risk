@@ -33,8 +33,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
-from evidently import ColumnMapping, Report
-from evidently.presets import DataDriftPreset
+from evidently import Report
+
+try:
+    from evidently.presets import DataDriftPreset
+except ImportError:
+    from evidently.metric_preset import DataDriftPreset
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
@@ -141,13 +145,10 @@ def _calcular_drift(ref_df: pd.DataFrame, cur_df: pd.DataFrame, tmpdir: str) -> 
 
     Salva feature_drift_report.html no tmpdir para logar no MLflow.
     """
-    column_mapping = ColumnMapping(numerical_features=FEATURE_COLS)
-
     report = Report([DataDriftPreset(method="psi")])
     report.run(
         reference_data=ref_df[FEATURE_COLS],
         current_data=cur_df[FEATURE_COLS],
-        column_mapping=column_mapping,
     )
 
     # salva HTML para artefato MLflow
