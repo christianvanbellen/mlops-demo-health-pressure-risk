@@ -29,6 +29,10 @@ PYSPARK_MOCKS = [
     "databricks.labs.dqx.col_functions",
     "databricks.labs.dqx.row_checks",
     "databricks.sdk",
+    # Evidently — não instalado no ambiente de testes unitários locais
+    "evidently",
+    "evidently.presets",
+    "evidently.metric_preset",
 ]
 
 for mod in PYSPARK_MOCKS:

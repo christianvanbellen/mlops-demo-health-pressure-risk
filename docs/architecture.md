@@ -258,6 +258,17 @@ df.write...saveAsTable(TABLE_BRONZE_SRAG)
 - Threshold de alerta: `Precision@K < 0.55`
 - Grava resultados em `monitoring_performance` e loga métricas no MLflow
 
+**Monitor de feature drift** (`src/monitoring/feature_drift_monitor.py`):
+- Ferramenta: Evidently AI (`evidently>=0.4.30`)
+- Referência: distribuição das features no período de treino (competências ≤ `TRAIN_END`)
+- Atual: features da competência mais recente em `gold_pressure_scoring`
+- Método: PSI (Population Stability Index) via `DataDriftPreset(method="psi")`
+- Threshold warn: PSI ≥ 0.20 por feature (drift moderado)
+- Threshold alerta por feature: PSI ≥ 0.25 (drift severo)
+- Alerta geral: ≥ 30% das features com PSI ≥ 0.20
+- Status de saída: `ok` / `warn` / `alerta`
+- Saídas: `monitoring_feature_drift` (append) + `feature_drift_report.html`, `feature_drift_chart.png` e `feature_drift_summary.json` no MLflow
+
 **Retrain trigger** (`src/monitoring/retrain_trigger.py`):
 - Lê `monitoring_performance`
 - **Regra principal:** `Precision@K < 0.55` por 2+ competências consecutivas
@@ -279,6 +290,8 @@ Gold: gold_pressure_features
 Batch Score: @champion, política de confiança, A/B canary
   ↓
 Performance Monitor: Precision@K, AUC-PR, backtesting
+  ↓
+Feature Drift Monitor: PSI por feature, Evidently AI
   ↓
 Retrain Trigger: regra 2 consecutivas + queda abrupta
   ↓ (se trigger disparar)

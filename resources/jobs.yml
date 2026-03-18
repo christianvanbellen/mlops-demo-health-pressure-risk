@@ -97,12 +97,21 @@ resources:
           job_cluster_key: weekly_ml_cluster
           timeout_seconds: 3600
 
+        - task_key: feature_drift_monitor
+          description: "Detecta drift nas distribuições das features vs referência de treino"
+          depends_on:
+            - task_key: performance_monitor
+          spark_python_task:
+            python_file: ../src/monitoring/feature_drift_monitor.py
+          job_cluster_key: weekly_ml_cluster
+          timeout_seconds: 1800
+
         - task_key: retrain_trigger
           description: >
             Avalia se retraining deve ser disparado.
             Regra: Precision@K < 0.55 por 2+ competências consecutivas.
           depends_on:
-            - task_key: performance_monitor
+            - task_key: feature_drift_monitor
           spark_python_task:
             python_file: ../src/monitoring/retrain_trigger.py
           job_cluster_key: weekly_ml_cluster

@@ -36,6 +36,9 @@ dependencies = [
 
   # Qualidade de dados
   "databricks-labs-dqx>=0.5.0",
+
+  # Feature drift
+  "evidently>=0.4.30",
 ]
 
 [project.optional-dependencies]
