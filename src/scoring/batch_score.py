@@ -194,7 +194,7 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
 
     # aplica política de confiança
     elegivel = (
-        candidatas.filter(F.col("forward_fill") == False)
+        candidatas.filter(~F.col("forward_fill"))
         .filter(F.col("consolidation") != "recente")
         .filter(F.col("quality_score") >= SCORING_MIN_QUALITY)
         .agg(F.max("competencia").alias("max_comp"))

@@ -385,7 +385,7 @@ def _adicionar_consolidation_flag(df):
     df = df.withColumn(
         "data_quality_score",
         F.when(
-            F.col("capacity_is_forward_fill") == True,
+            F.col("capacity_is_forward_fill"),
             F.lit(0.3),
         )
         .when(
@@ -435,7 +435,7 @@ def _calcular_target(df):
     df = df.withColumn(
         "casos_por_leito_next",
         F.when(
-            (F.col("next_is_forward_fill") == True)
+            F.col("next_is_forward_fill")
             | (F.col("next_consolidation_flag") == "recente"),
             F.lit(None).cast("double"),
         ).otherwise(F.col("casos_por_leito_next")),

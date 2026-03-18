@@ -58,7 +58,6 @@ def _filtrar_sem_pri_valido(df):
     Remove registros onde SEM_PRI é nulo ou não conversível para inteiro.
     Loga quantos foram descartados.
     """
-    total = df.count()
     invalidos = df.filter(
         F.col("SEM_PRI").isNull() | F.col("SEM_PRI").cast("integer").isNull()
     ).count()

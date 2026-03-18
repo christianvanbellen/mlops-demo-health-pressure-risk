@@ -179,7 +179,7 @@ def _get_credentials() -> tuple[str, str]:
 
     if not host or not token:
         try:
-            ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+            ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()  # noqa: F821
             host = host or ctx.apiUrl().get()
             token = token or ctx.apiToken().get()
         except Exception:

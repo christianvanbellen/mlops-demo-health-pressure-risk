@@ -174,7 +174,7 @@ def _log_model_summary(model, train):
     coefs = lr_model.coefficients.toArray()
     intercept = lr_model.intercept
 
-    coef_pairs = sorted(zip(FEATURE_COLS, coefs), key=lambda x: abs(x[1]), reverse=True)
+    coef_pairs = sorted(zip(FEATURE_COLS, coefs, strict=False), key=lambda x: abs(x[1]), reverse=True)
 
     total = train.count()
     positivos = train.filter(F.col(TARGET_COL) == 1.0).count()
@@ -412,7 +412,7 @@ def _plot_decile_analysis(model, df, split_name: str):
         linewidth=1.2,
         label=f"Prevalência ({prevalencia:.1f}%)",
     )
-    for bar, pct in zip(bars1, pcts):
+    for bar, pct in zip(bars1, pcts, strict=False):
         ax1.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.3,
@@ -431,7 +431,7 @@ def _plot_decile_analysis(model, df, split_name: str):
 
     # subplot 2 — volume por decil
     bars2 = ax2.bar(decis, volumes, color="slategrey", edgecolor="white", linewidth=0.5)
-    for bar, n in zip(bars2, volumes):
+    for bar, n in zip(bars2, volumes, strict=False):
         ax2.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.5,

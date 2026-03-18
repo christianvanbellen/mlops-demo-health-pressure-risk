@@ -88,7 +88,7 @@ def _simular_scores_historicos(spark: SparkSession) -> DataFrame:
     para_simular = (
         gold.filter(F.col(TARGET_COL).isNotNull())
         .filter(F.col("srag_consolidation_flag").isin(VALID_CONSOLIDATION))
-        .filter(F.col("capacity_is_forward_fill") == False)
+        .filter(~F.col("capacity_is_forward_fill"))
         .join(scored_comps, on="competencia", how="left_anti")
         .select("competencia")
         .distinct()
@@ -201,7 +201,7 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
     target_real = (
         gold.filter(F.col(TARGET_COL).isNotNull())
         .filter(F.col("srag_consolidation_flag").isin(VALID_CONSOLIDATION))
-        .filter(F.col("capacity_is_forward_fill") == False)
+        .filter(~F.col("capacity_is_forward_fill"))
         .select(
             "municipio_id",
             "competencia",
@@ -296,8 +296,8 @@ def _plot_performance_timeline(
 
     df = df_metricas.sort_values("competencia").reset_index(drop=True)
     n = len(df)
-    mask_sim = df["simulated"] == True
-    mask_real = df["simulated"] == False
+    mask_sim = df["simulated"]
+    mask_real = ~df["simulated"]
     idx_sim = [i for i, s in enumerate(df["simulated"]) if s]
     idx_real = [i for i, s in enumerate(df["simulated"]) if not s]
 

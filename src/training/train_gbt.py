@@ -216,7 +216,7 @@ def _log_model_summary(model, X_train, y_train):
     estatísticas do treino.
     """
     importances = sorted(
-        zip(FEATURE_COLS, model.feature_importance(importance_type="gain")),
+        zip(FEATURE_COLS, model.feature_importance(importance_type="gain"), strict=False),
         key=lambda x: x[1],
         reverse=True,
     )
@@ -396,16 +396,16 @@ def _plot_feature_importance(model):
     plt.style.use("seaborn-v0_8-whitegrid")
 
     importances = sorted(
-        zip(FEATURE_COLS, model.feature_importance(importance_type="gain")),
+        zip(FEATURE_COLS, model.feature_importance(importance_type="gain"), strict=False),
         key=lambda x: x[1],
         reverse=True,
     )[:15]
-    feats, imps = zip(*importances)
+    feats, imps = zip(*importances, strict=False)
 
     fig, ax = plt.subplots(figsize=(10, 7))
     bars = ax.barh(range(len(feats)), imps, color="steelblue", edgecolor="white")
 
-    for bar, imp in zip(bars, imps):
+    for bar, imp in zip(bars, imps, strict=False):
         ax.text(
             bar.get_width() + max(imps) * 0.01,
             bar.get_y() + bar.get_height() / 2,
@@ -466,7 +466,7 @@ def _plot_decile_analysis(model, X, y, split_name: str):
         linewidth=1.2,
         label=f"Prevalência ({prevalencia:.1f}%)",
     )
-    for bar, pct in zip(bars1, pcts):
+    for bar, pct in zip(bars1, pcts, strict=False):
         ax1.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.3,
@@ -484,7 +484,7 @@ def _plot_decile_analysis(model, X, y, split_name: str):
     ax1.legend(fontsize=9)
 
     bars2 = ax2.bar(decis, volumes, color="slategrey", edgecolor="white", linewidth=0.5)
-    for bar, n in zip(bars2, volumes):
+    for bar, n in zip(bars2, volumes, strict=False):
         ax2.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.5,
