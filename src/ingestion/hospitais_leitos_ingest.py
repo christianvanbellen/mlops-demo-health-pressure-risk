@@ -3,8 +3,6 @@
 # Fonte: https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos
 
 import io
-import os
-import sys
 import zipfile
 from datetime import datetime
 
@@ -12,7 +10,6 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_HOSPITAIS_LEITOS
 from quality.checks import checks_bronze_hospitais_leitos
 from quality.runner import run_checks

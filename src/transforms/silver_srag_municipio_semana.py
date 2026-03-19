@@ -26,10 +26,6 @@
 #     silver_srag.competencia == silver_capacity.competencia
 #   Um caso notificado na semana 5 de 2025 → data_ref ≈ 2025-01-29 → competencia "202501"
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 

@@ -11,10 +11,8 @@
 # - Job precisa existir com nome RETRAIN_JOB_NAME para disparo automático
 
 import os
-import sys
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mlflow
 import pandas as pd
 import requests

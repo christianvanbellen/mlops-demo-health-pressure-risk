@@ -19,7 +19,6 @@
 #   - Modelo registrado no Unity Catalog: pressure_risk_classifier
 
 import os
-import sys
 import tempfile
 
 import matplotlib.pyplot as plt
@@ -36,7 +35,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import precision_recall_curve, roc_curve
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     FEATURE_COLS,
     MODEL_NAME,

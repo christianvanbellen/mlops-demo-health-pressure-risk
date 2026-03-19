@@ -10,11 +10,7 @@
 # Linhas que falharam em checks de criticality="error" são gravadas na
 # tabela de quarentena em modo append para auditoria posterior.
 
-import os
-import sys
 from datetime import datetime
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from databricks.labs.dqx.engine import DQEngine
 from pyspark.sql import DataFrame, SparkSession

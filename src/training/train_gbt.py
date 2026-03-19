@@ -17,7 +17,6 @@
 #   Teste  : 202507+                (segundo semestre 2025 em diante)
 
 import os
-import sys
 import tempfile
 
 import lightgbm as lgb
@@ -35,7 +34,6 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     EARLY_STOPPING,
     FEATURE_COLS,

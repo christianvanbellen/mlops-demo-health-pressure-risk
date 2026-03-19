@@ -2,16 +2,13 @@
 # Ingestão Bronze — SRAG / SIVEP-Gripe
 # Fonte: https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026
 
-import os
 import re
-import sys
 from datetime import datetime
 
 import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_SRAG
 from quality.checks import checks_bronze_srag
 from quality.runner import run_checks
