@@ -1,10 +1,5 @@
-import pytest
-import pandas as pd
 import numpy as np
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import pandas as pd
 
 
 class TestAvaliarTrigger:
@@ -26,7 +21,7 @@ class TestAvaliarTrigger:
             "monitor_date":       ["2026-03-17"],
         })
         resultado = _avaliar_trigger(df)
-        assert resultado["trigger"] == False
+        assert not resultado["trigger"]
         assert "insuficiente" in resultado["reason"].lower()
 
     def test_sem_trigger_performance_ok(self):
@@ -41,7 +36,7 @@ class TestAvaliarTrigger:
             "monitor_date":       ["2026-03-17"] * 6,
         })
         resultado = _avaliar_trigger(df)
-        assert resultado["trigger"] == False
+        assert not resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 0
 
     def test_trigger_duas_consecutivas(self):
@@ -56,7 +51,7 @@ class TestAvaliarTrigger:
             "monitor_date":       ["2026-03-17"] * 6,
         })
         resultado = _avaliar_trigger(df)
-        assert resultado["trigger"] == True
+        assert resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 2
         assert "degradação" in resultado["reason"].lower()
 
@@ -72,7 +67,7 @@ class TestAvaliarTrigger:
             "monitor_date":       ["2026-03-17"] * 6,
         })
         resultado = _avaliar_trigger(df)
-        assert resultado["trigger"] == False
+        assert not resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 1
 
     def test_trigger_queda_abrupta(self):
@@ -87,7 +82,7 @@ class TestAvaliarTrigger:
             "monitor_date":       ["2026-03-17"] * 8,
         })
         resultado = _avaliar_trigger(df)
-        assert resultado["trigger"] == True
+        assert resultado["trigger"]
         assert "abrupta" in resultado["reason"].lower()
 
 

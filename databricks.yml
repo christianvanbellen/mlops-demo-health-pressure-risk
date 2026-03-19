@@ -7,6 +7,70 @@ variables:
   schema:
     default: dev_christian_van_bellen
 
+  # tabelas bronze
+  table_bronze_srag:
+    default: ds_dev_db.dev_christian_van_bellen.bronze_srag
+  table_bronze_hospitais_leitos:
+    default: ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
+  table_bronze_cnes:
+    default: ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos
+
+  # tabelas silver
+  table_silver_srag:
+    default: ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
+  table_silver_capacity:
+    default: ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
+
+  # tabelas gold
+  table_gold_features:
+    default: ds_dev_db.dev_christian_van_bellen.gold_pressure_features
+  table_gold_scoring:
+    default: ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
+  table_gold_monitor:
+    default: ds_dev_db.dev_christian_van_bellen.monitoring_performance
+
+  # volume e mlflow
+  landing_path:
+    default: /Volumes/ds_dev_db/dev_christian_van_bellen/landing
+  mlflow_experiment:
+    default: /Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr
+
+  # model registry
+  model_name:
+    default: ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier
+  retrain_job_name:
+    default: job_health_pressure_retrain
+
+  # split temporal
+  train_end:
+    default: "202412"
+  val_end:
+    default: "202506"
+  test_start:
+    default: "202507"
+
+  # thresholds operacionais
+  target_percentile:
+    default: "0.85"
+  precision_k_threshold:
+    default: "0.55"
+  min_consecutive_below:
+    default: "2"
+  scoring_min_quality:
+    default: "0.5"
+  ab_challenger_pct:
+    default: "0.20"
+  drift_seasonal_features:
+    default: "mes,quarter,is_semester1,is_rainy_season"
+
+  # lgbm
+  lgbm_params_json:
+    default: '{"objective":"binary","metric":"binary_logloss","boosting_type":"gbdt","num_leaves":63,"learning_rate":0.05,"feature_fraction":0.8,"bagging_fraction":0.8,"bagging_freq":5,"min_child_samples":20,"reg_alpha":0.1,"reg_lambda":0.1,"verbose":-1}'
+  num_boost_round:
+    default: "500"
+  early_stopping:
+    default: "50"
+
 targets:
   dev:
     mode: development
