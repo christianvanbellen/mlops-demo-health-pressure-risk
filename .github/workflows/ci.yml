@@ -51,7 +51,6 @@ jobs:
         run: uv run pytest tests/ -v --tb=short
         env:
           PYTHONPATH: src
-          APP_ENV: dev
 
   # ── Job 2: Build wheel + publish ao Volume (dev) ─────
   build-wheel:

@@ -1,6 +1,9 @@
 # scripts/setup-dev.ps1
-# Define as variáveis de ambiente necessárias para rodar os módulos src/ localmente.
+# Sobrescreve as variáveis de ambiente de configuração para desenvolvimento local.
 # Uso: . .\scripts\setup-dev.ps1  (dot-source para exportar para o shell corrente)
+#
+# Só é necessário quando você quiser sobrescrever os defaults do ConfigLoader
+# (src/config.py). Em desenvolvimento normal os defaults já refletem o ambiente dev.
 #
 # Equivalente bash: scripts/setup-dev.sh
 
