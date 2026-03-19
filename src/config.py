@@ -62,7 +62,9 @@ class ConfigLoader:
 
         # 3. Default
         if default is not None:
-            return self._cast(str(default) if not isinstance(default, (list, dict)) else default, dtype, key)
+            return self._cast(
+                str(default) if not isinstance(default, (list, dict)) else default, dtype, key
+            )
 
         raise ValueError(
             f"Config '{key}' não encontrada. "
@@ -95,61 +97,72 @@ _cfg = ConfigLoader()
 
 # ── Ambiente ─────────────────────────────────────────────────────
 CATALOG = _cfg.get("catalog", str, "ds_dev_db")
-SCHEMA  = _cfg.get("schema",  str, "dev_christian_van_bellen")
+SCHEMA = _cfg.get("schema", str, "dev_christian_van_bellen")
 
 # ── Tabelas Bronze ────────────────────────────────────────────────
 TABLE_BRONZE_SRAG = _cfg.get(
-    "table_bronze_srag", str,
+    "table_bronze_srag",
+    str,
     "ds_dev_db.dev_christian_van_bellen.bronze_srag",
 )
 TABLE_BRONZE_HOSPITAIS_LEITOS = _cfg.get(
-    "table_bronze_hospitais_leitos", str,
+    "table_bronze_hospitais_leitos",
+    str,
     "ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos",
 )
 TABLE_BRONZE_CNES = _cfg.get(
-    "table_bronze_cnes", str,
+    "table_bronze_cnes",
+    str,
     "ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos",
 )
 
 # ── Tabelas Silver ────────────────────────────────────────────────
 TABLE_SILVER_SRAG = _cfg.get(
-    "table_silver_srag", str,
+    "table_silver_srag",
+    str,
     "ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana",
 )
 TABLE_SILVER_CAPACITY = _cfg.get(
-    "table_silver_capacity", str,
+    "table_silver_capacity",
+    str,
     "ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes",
 )
 
 # ── Tabelas Gold ──────────────────────────────────────────────────
 TABLE_GOLD_FEATURES = _cfg.get(
-    "table_gold_features", str,
+    "table_gold_features",
+    str,
     "ds_dev_db.dev_christian_van_bellen.gold_pressure_features",
 )
 TABLE_GOLD_SCORING = _cfg.get(
-    "table_gold_scoring", str,
+    "table_gold_scoring",
+    str,
     "ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring",
 )
 TABLE_GOLD_MONITOR = _cfg.get(
-    "table_gold_monitor", str,
+    "table_gold_monitor",
+    str,
     "ds_dev_db.dev_christian_van_bellen.monitoring_performance",
 )
 
 # ── Volume de landing ─────────────────────────────────────────────
 LANDING_PATH = _cfg.get(
-    "landing_path", str,
+    "landing_path",
+    str,
     "/Volumes/ds_dev_db/dev_christian_van_bellen/landing",
 )
 
 # ── MLflow ────────────────────────────────────────────────────────
 MLFLOW_EXPERIMENT = _cfg.get(
-    "mlflow_experiment", str,
+    "mlflow_experiment",
+    str,
     "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr",
 )
 
 # ── Model Registry ────────────────────────────────────────────────
 MODEL_NAME = _cfg.get(
-    "model_name", str,
+    "model_name",
+    str,
     "ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier",
 )
 RETRAIN_JOB_NAME = _cfg.get("retrain_job_name", str, "job_health_pressure_retrain")
@@ -183,24 +196,26 @@ FEATURE_COLS = [
 TARGET_COL = "target_alta_pressao"
 
 # ── Split temporal ────────────────────────────────────────────────
-TRAIN_END  = _cfg.get("train_end",  str, "202412")
-VAL_END    = _cfg.get("val_end",    str, "202506")
+TRAIN_END = _cfg.get("train_end", str, "202412")
+VAL_END = _cfg.get("val_end", str, "202506")
 TEST_START = _cfg.get("test_start", str, "202507")
 
 # ── Thresholds operacionais ───────────────────────────────────────
-TARGET_PERCENTILE     = _cfg.get("target_percentile",     float, 0.85)
+TARGET_PERCENTILE = _cfg.get("target_percentile", float, 0.85)
 PRECISION_K_THRESHOLD = _cfg.get("precision_k_threshold", float, 0.55)
-MIN_CONSECUTIVE_BELOW = _cfg.get("min_consecutive_below", int,   2)
-SCORING_MIN_QUALITY   = _cfg.get("scoring_min_quality",   float, 0.5)
-AB_CHALLENGER_PCT     = _cfg.get("ab_challenger_pct",     float, 0.20)
+MIN_CONSECUTIVE_BELOW = _cfg.get("min_consecutive_below", int, 2)
+SCORING_MIN_QUALITY = _cfg.get("scoring_min_quality", float, 0.5)
+AB_CHALLENGER_PCT = _cfg.get("ab_challenger_pct", float, 0.20)
 DRIFT_SEASONAL_FEATURES = _cfg.get(
-    "drift_seasonal_features", list,
+    "drift_seasonal_features",
+    list,
     ["mes", "quarter", "is_semester1", "is_rainy_season"],
 )
 
 # ── Parâmetros LightGBM ───────────────────────────────────────────
 LGBM_PARAMS = _cfg.get(
-    "lgbm_params_json", dict,
+    "lgbm_params_json",
+    dict,
     {
         "objective": "binary",
         "metric": "binary_logloss",
@@ -217,4 +232,4 @@ LGBM_PARAMS = _cfg.get(
     },
 )
 NUM_BOOST_ROUND = _cfg.get("num_boost_round", int, 500)
-EARLY_STOPPING  = _cfg.get("early_stopping",  int, 50)
+EARLY_STOPPING = _cfg.get("early_stopping", int, 50)
