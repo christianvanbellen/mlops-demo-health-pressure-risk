@@ -138,3 +138,83 @@ Versão atual da regra: `target_definition_version = 'v1'`
 - Roteiro conceitual do projeto: `docs/architecture.md`
 - Decisões técnicas: `docs/decisions.md`
 - Fontes de dados detalhadas: `docs/data_sources.md`
+
+---
+
+## Fluxo obrigatório de Git
+
+Todo trabalho de código deve seguir este ritual, sem exceção.
+
+### 1. Partir da main atualizada
+
+```bash
+git checkout main
+git pull origin main
+```
+
+### 2. Criar branch descritiva
+
+Padrão: `<tipo>/<topico-curto>`
+
+| Tipo | Quando usar |
+|---|---|
+| `feat` | nova funcionalidade |
+| `fix` | correção de bug |
+| `chore` | tarefas de manutenção sem impacto funcional |
+| `docs` | documentação |
+| `refactor` | refatoração sem mudança de comportamento |
+| `test` | testes |
+
+Exemplos: `feat/wheel-packaging`, `fix/personal-compute-temp`, `docs/contributing`
+
+### 3. Fazer as alterações necessárias
+
+### 4. Commitar com Conventional Commits
+
+```
+<tipo>(<escopo-opcional>): <descrição curta no imperativo>
+```
+
+Exemplos:
+- `feat(ci): add wheel build and upload to Unity Catalog volume`
+- `fix(jobs): replace job cluster with existing_cluster_id`
+- `docs(contributing): add gh CLI setup instructions`
+
+### 5. Abrir PR via gh CLI
+
+```bash
+gh pr create \
+  --title "<tipo>(<escopo>): <descrição>" \
+  --body-file .github/pull_request_template.md \
+  --reviewer christianvanbellen
+```
+
+**Comportamento quando `gh` não está disponível no ambiente:**
+
+O Claude Code roda em um shell Linux (`/usr/bin/bash`) e pode não ter acesso ao
+`gh` CLI instalado no Windows do desenvolvedor. Se o comando falhar com
+`command not found` ou exit code 127:
+
+1. **NÃO reportar como erro.**
+2. Imprimir o bloco abaixo, com título, body-file e reviewer já preenchidos,
+   pronto para copiar e rodar no PowerShell local:
+
+```
+─────────────────────────────────────────────
+PR pronto para abrir. Rode no PowerShell:
+
+gh pr create `
+  --title "<título>" `
+  --body-file .github/pull_request_template.md `
+  --reviewer christianvanbellen
+
+Ou abra manualmente:
+https://github.com/christianvanbellen/mlops-demo-health-pressure-risk/compare/<branch>?expand=1
+─────────────────────────────────────────────
+```
+
+### Regras adicionais
+
+- **Nunca** commitar diretamente na `main`
+- **Nunca** abrir PR sem `--reviewer christianvanbellen`
+- **Um PR por tarefa** — não acumular alterações não relacionadas
