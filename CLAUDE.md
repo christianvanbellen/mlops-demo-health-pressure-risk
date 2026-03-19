@@ -189,6 +189,30 @@ gh pr create \
   --reviewer christianvanbellen
 ```
 
+**Comportamento quando `gh` não está disponível no ambiente:**
+
+O Claude Code roda em um shell Linux (`/usr/bin/bash`) e pode não ter acesso ao
+`gh` CLI instalado no Windows do desenvolvedor. Se o comando falhar com
+`command not found` ou exit code 127:
+
+1. **NÃO reportar como erro.**
+2. Imprimir o bloco abaixo, com título, body-file e reviewer já preenchidos,
+   pronto para copiar e rodar no PowerShell local:
+
+```
+─────────────────────────────────────────────
+PR pronto para abrir. Rode no PowerShell:
+
+gh pr create `
+  --title "<título>" `
+  --body-file .github/pull_request_template.md `
+  --reviewer christianvanbellen
+
+Ou abra manualmente:
+https://github.com/christianvanbellen/mlops-demo-health-pressure-risk/compare/<branch>?expand=1
+─────────────────────────────────────────────
+```
+
 ### Regras adicionais
 
 - **Nunca** commitar diretamente na `main`
