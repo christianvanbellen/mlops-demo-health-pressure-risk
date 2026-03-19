@@ -8,17 +8,18 @@ resources:
         Pipeline semanal do Radar de Pressão Assistencial.
         Roda toda segunda-feira: ingestão, transforms, scoring e monitoramento.
 
-      job_clusters:
-        - job_cluster_key: weekly_ml_cluster
-          new_cluster:
-            spark_version: "16.4.x-cpu-ml-scala2.13"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-            spark_conf:
-              spark.databricks.delta.preview.enabled: "true"
-            custom_tags:
-              project: "health-pressure-risk"
-              job: "weekly"
+      # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+      # job_clusters:
+      #   - job_cluster_key: weekly_ml_cluster
+      #     new_cluster:
+      #       spark_version: "16.4.x-cpu-ml-scala2.13"
+      #       node_type_id: "i3.xlarge"
+      #       num_workers: 1
+      #       spark_conf:
+      #         spark.databricks.delta.preview.enabled: "true"
+      #       custom_tags:
+      #         project: "health-pressure-risk"
+      #         job: "weekly"
 
       schedule:
         quartz_cron_expression: "0 0 6 ? * MON"
@@ -36,7 +37,9 @@ resources:
           spark_python_task:
             python_file: ../src/ingestion/srag_ingest.py
             parameters: ["--live"]
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
           max_retries: 1
 
@@ -47,7 +50,9 @@ resources:
           spark_python_task:
             python_file: ../src/ingestion/hospitais_leitos_ingest.py
             parameters: ["--live"]
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 1800
           max_retries: 1
 
@@ -57,7 +62,9 @@ resources:
             - task_key: ingestao_hospitais
           spark_python_task:
             python_file: ../src/transforms/silver_capacity_municipio_mes.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 1800
 
         - task_key: silver_srag
@@ -66,7 +73,9 @@ resources:
             - task_key: ingestao_bronze
           spark_python_task:
             python_file: ../src/transforms/silver_srag_municipio_semana.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 1800
 
         - task_key: gold_features
@@ -76,7 +85,9 @@ resources:
             - task_key: silver_srag
           spark_python_task:
             python_file: ../src/transforms/gold_pressure_features.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
 
         - task_key: batch_score
@@ -85,7 +96,9 @@ resources:
             - task_key: gold_features
           spark_python_task:
             python_file: ../src/scoring/batch_score.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 1800
 
         - task_key: performance_monitor
@@ -94,7 +107,9 @@ resources:
             - task_key: batch_score
           spark_python_task:
             python_file: ../src/monitoring/performance_monitor.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
 
         - task_key: feature_drift_monitor
@@ -103,7 +118,9 @@ resources:
             - task_key: performance_monitor
           spark_python_task:
             python_file: ../src/monitoring/feature_drift_monitor.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 1800
 
         - task_key: retrain_trigger
@@ -114,7 +131,9 @@ resources:
             - task_key: feature_drift_monitor
           spark_python_task:
             python_file: ../src/monitoring/retrain_trigger.py
-          job_cluster_key: weekly_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: weekly_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 600
 
     # ── Job 2: Retraining ────────────────────────────────
@@ -126,17 +145,18 @@ resources:
         Treina LR + LightGBM, compara com champion atual e registra
         challenger no MLflow para aprovação humana.
 
-      job_clusters:
-        - job_cluster_key: retrain_ml_cluster
-          new_cluster:
-            spark_version: "16.4.x-cpu-ml-scala2.13"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-            spark_conf:
-              spark.databricks.delta.preview.enabled: "true"
-            custom_tags:
-              project: "health-pressure-risk"
-              job: "retrain"
+      # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+      # job_clusters:
+      #   - job_cluster_key: retrain_ml_cluster
+      #     new_cluster:
+      #       spark_version: "16.4.x-cpu-ml-scala2.13"
+      #       node_type_id: "i3.xlarge"
+      #       num_workers: 1
+      #       spark_conf:
+      #         spark.databricks.delta.preview.enabled: "true"
+      #       custom_tags:
+      #         project: "health-pressure-risk"
+      #         job: "retrain"
 
       # sem schedule — disparado por trigger ou manualmente
       email_notifications:
@@ -162,7 +182,9 @@ resources:
           description: "Treina Logistic Regression baseline"
           spark_python_task:
             python_file: ../src/training/train_baseline_lr.py
-          job_cluster_key: retrain_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: retrain_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
           max_retries: 1
 
@@ -172,7 +194,9 @@ resources:
             - task_key: train_baseline_lr
           spark_python_task:
             python_file: ../src/training/train_gbt.py
-          job_cluster_key: retrain_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: retrain_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
           max_retries: 1
 
@@ -184,5 +208,7 @@ resources:
             - task_key: train_gbt
           spark_python_task:
             python_file: ../src/training/evaluate.py
-          job_cluster_key: retrain_ml_cluster
+          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
+          # job_cluster_key: retrain_ml_cluster
+          existing_cluster_id: "0313-185050-12k2qcl2"
           timeout_seconds: 3600
