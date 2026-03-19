@@ -13,13 +13,11 @@
 
 import argparse
 import os
-import sys
 from datetime import datetime
 
 import mlflow
 from mlflow.tracking import MlflowClient
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MLFLOW_EXPERIMENT, MODEL_NAME
 
 # ── métricas exibidas nas comparações ────────────────────────────

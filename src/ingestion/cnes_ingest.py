@@ -77,7 +77,6 @@
 
 import os
 import re
-import sys
 import zipfile
 from datetime import datetime
 from ftplib import FTP
@@ -86,7 +85,6 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_CNES
 
 # ── configuração ────────────────────────────────────────────────

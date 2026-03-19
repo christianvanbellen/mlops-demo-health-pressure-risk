@@ -18,7 +18,6 @@
 
 import json
 import os
-import sys
 import tempfile
 import uuid
 from datetime import datetime
@@ -34,7 +33,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     FEATURE_COLS,
     MODEL_NAME,

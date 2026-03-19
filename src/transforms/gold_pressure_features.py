@@ -65,10 +65,6 @@
 #   srag_consolidation_flag      = "consolidado" | "estabilizando" | "recente"
 #   data_quality_score           = 0.3 | 0.5 | 0.8 | 1.0
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F

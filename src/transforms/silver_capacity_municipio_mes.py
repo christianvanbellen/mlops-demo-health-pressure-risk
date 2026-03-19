@@ -24,10 +24,6 @@
 #   a contagem de descartados é sempre logada. A remoção silenciosa é evitada
 #   para facilitar auditoria e detecção de problemas na bronze.
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
