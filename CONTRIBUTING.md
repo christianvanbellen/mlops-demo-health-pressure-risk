@@ -129,6 +129,106 @@ Solicitar ao tech lead:
 
 Configurar como variáveis de ambiente ou em `~/.databrickscfg`.
 
+---
+
+## Configuração da aplicação (ConfigLoader)
+
+O `src/config.py` resolve cada variável em cascata, nesta ordem de prioridade:
+
+1. **Spark conf** — `spark.conf.get("health.pressure.<key>")`
+   Configure no cluster Databricks → Configuração → Spark Config
+2. **Env var** — `os.environ.get("<KEY>")`
+   Configure no cluster Databricks → Configuração → Environment Variables
+3. **Default hardcodado** — valores de desenvolvimento (definidos em `src/config.py`)
+   Ativo automaticamente quando nenhuma das camadas anteriores estiver presente
+
+Se uma variável não for encontrada em nenhuma camada e não tiver default,
+o `ConfigLoader` levanta `ValueError` explícito indicando qual variável faltou.
+
+### Rodando scripts localmente (fora do cluster)
+
+Os defaults cobrem o ambiente de desenvolvimento. Se precisar sobrescrever
+algum valor, use os scripts abaixo **antes** de executar qualquer script `src/`:
+
+#### bash / zsh
+
+```bash
+source scripts/setup-dev.sh
+```
+
+Ou exportando variáveis individuais:
+
+```bash
+export CATALOG="ds_dev_db"
+export SCHEMA="dev_christian_van_bellen"
+export TABLE_BRONZE_SRAG="ds_dev_db.dev_christian_van_bellen.bronze_srag"
+export TABLE_BRONZE_HOSPITAIS_LEITOS="ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos"
+export TABLE_BRONZE_CNES="ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos"
+export TABLE_SILVER_SRAG="ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana"
+export TABLE_SILVER_CAPACITY="ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes"
+export TABLE_GOLD_FEATURES="ds_dev_db.dev_christian_van_bellen.gold_pressure_features"
+export TABLE_GOLD_SCORING="ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring"
+export TABLE_GOLD_MONITOR="ds_dev_db.dev_christian_van_bellen.monitoring_performance"
+export LANDING_PATH="/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
+export MLFLOW_EXPERIMENT="/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
+export MODEL_NAME="ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier"
+export RETRAIN_JOB_NAME="job_health_pressure_retrain"
+export TRAIN_END="202412"
+export VAL_END="202506"
+export TEST_START="202507"
+export TARGET_PERCENTILE="0.85"
+export PRECISION_K_THRESHOLD="0.55"
+export MIN_CONSECUTIVE_BELOW="2"
+export SCORING_MIN_QUALITY="0.5"
+export AB_CHALLENGER_PCT="0.20"
+export DRIFT_SEASONAL_FEATURES="mes,quarter,is_semester1,is_rainy_season"
+export LGBM_PARAMS_JSON='{"objective":"binary","metric":"binary_logloss","boosting_type":"gbdt","num_leaves":63,"learning_rate":0.05,"feature_fraction":0.8,"bagging_fraction":0.8,"bagging_freq":5,"min_child_samples":20,"reg_alpha":0.1,"reg_lambda":0.1,"verbose":-1}'
+export NUM_BOOST_ROUND="500"
+export EARLY_STOPPING="50"
+```
+
+#### PowerShell
+
+```powershell
+. .\scripts\setup-dev.ps1
+```
+
+Ou definindo variáveis individuais:
+
+```powershell
+$env:CATALOG = "ds_dev_db"
+$env:SCHEMA  = "dev_christian_van_bellen"
+$env:TABLE_BRONZE_SRAG             = "ds_dev_db.dev_christian_van_bellen.bronze_srag"
+$env:TABLE_BRONZE_HOSPITAIS_LEITOS = "ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos"
+$env:TABLE_BRONZE_CNES             = "ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos"
+$env:TABLE_SILVER_SRAG     = "ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana"
+$env:TABLE_SILVER_CAPACITY = "ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes"
+$env:TABLE_GOLD_FEATURES = "ds_dev_db.dev_christian_van_bellen.gold_pressure_features"
+$env:TABLE_GOLD_SCORING  = "ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring"
+$env:TABLE_GOLD_MONITOR  = "ds_dev_db.dev_christian_van_bellen.monitoring_performance"
+$env:LANDING_PATH      = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
+$env:MLFLOW_EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
+$env:MODEL_NAME        = "ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier"
+$env:RETRAIN_JOB_NAME  = "job_health_pressure_retrain"
+$env:TRAIN_END  = "202412"
+$env:VAL_END    = "202506"
+$env:TEST_START = "202507"
+$env:TARGET_PERCENTILE      = "0.85"
+$env:PRECISION_K_THRESHOLD  = "0.55"
+$env:MIN_CONSECUTIVE_BELOW  = "2"
+$env:SCORING_MIN_QUALITY    = "0.5"
+$env:AB_CHALLENGER_PCT      = "0.20"
+$env:DRIFT_SEASONAL_FEATURES = "mes,quarter,is_semester1,is_rainy_season"
+$env:LGBM_PARAMS_JSON = '{"objective":"binary","metric":"binary_logloss","boosting_type":"gbdt","num_leaves":63,"learning_rate":0.05,"feature_fraction":0.8,"bagging_fraction":0.8,"bagging_freq":5,"min_child_samples":20,"reg_alpha":0.1,"reg_lambda":0.1,"verbose":-1}'
+$env:NUM_BOOST_ROUND  = "500"
+$env:EARLY_STOPPING   = "50"
+```
+
+### Referência completa das variáveis
+
+Consultar `conf/dev.yml` e `conf/prod.yml` — cada variável está anotada com
+o nome da Spark conf key e o nome da env var equivalente.
+
 ## Fluxo de trabalho
 
 ### Branches

@@ -1,39 +1,95 @@
-# REFERÊNCIA APENAS — este arquivo não é lido em runtime.
-# A configuração é injetada via variáveis de ambiente (DAB em produção,
-# scripts/setup-dev.sh ou scripts/setup-dev.ps1 em desenvolvimento local).
+# =============================================================================
+# REFERÊNCIA DE CONFIGURAÇÃO — ambiente de produção
+# =============================================================================
+# Este arquivo NÃO é lido em runtime. Serve como documentação das variáveis
+# esperadas pelo ConfigLoader (src/config.py) e seus valores de produção.
+#
+# Como injetar cada variável:
+#
+#   Via Spark conf (prioridade 1):
+#     No cluster Databricks → Configuração → Spark Config:
+#       health.pressure.<spark_conf_key>   <valor>
+#
+#   Via env var (prioridade 2):
+#     No cluster Databricks → Configuração → Environment Variables:
+#       <ENV_VAR_KEY>=<valor>
+#
+# Formato: spark_conf_key | env_var_key | valor prod
+# =============================================================================
+
+# spark: health.pressure.catalog | env: CATALOG
 catalog: ds_prod_db
-schema:  prod_health_pressure
+
+# spark: health.pressure.schema | env: SCHEMA
+schema: prod_health_pressure
 
 tables:
-  bronze_srag:             ds_dev_db.dev_christian_van_bellen.bronze_srag
-  bronze_hospitais_leitos: ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
-  bronze_cnes:             ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos
-  silver_srag:             ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
-  silver_capacity:         ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
-  gold_features:           ds_dev_db.dev_christian_van_bellen.gold_pressure_features
-  gold_scoring:            ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
-  gold_monitoring:         ds_dev_db.dev_christian_van_bellen.monitoring_performance
+  # spark: health.pressure.table_bronze_srag | env: TABLE_BRONZE_SRAG
+  bronze_srag:             ds_prod_db.prod_health_pressure.bronze_srag
 
-landing_path: /Volumes/ds_dev_db/dev_christian_van_bellen/landing
+  # spark: health.pressure.table_bronze_hospitais_leitos | env: TABLE_BRONZE_HOSPITAIS_LEITOS
+  bronze_hospitais_leitos: ds_prod_db.prod_health_pressure.bronze_hospitais_leitos
+
+  # spark: health.pressure.table_bronze_cnes | env: TABLE_BRONZE_CNES
+  bronze_cnes:             ds_prod_db.prod_health_pressure.bronze_cnes_estabelecimentos
+
+  # spark: health.pressure.table_silver_srag | env: TABLE_SILVER_SRAG
+  silver_srag:             ds_prod_db.prod_health_pressure.silver_srag_municipio_semana
+
+  # spark: health.pressure.table_silver_capacity | env: TABLE_SILVER_CAPACITY
+  silver_capacity:         ds_prod_db.prod_health_pressure.silver_capacity_municipio_mes
+
+  # spark: health.pressure.table_gold_features | env: TABLE_GOLD_FEATURES
+  gold_features:           ds_prod_db.prod_health_pressure.gold_pressure_features
+
+  # spark: health.pressure.table_gold_scoring | env: TABLE_GOLD_SCORING
+  gold_scoring:            ds_prod_db.prod_health_pressure.gold_pressure_scoring
+
+  # spark: health.pressure.table_gold_monitor | env: TABLE_GOLD_MONITOR
+  gold_monitoring:         ds_prod_db.prod_health_pressure.monitoring_performance
+
+# spark: health.pressure.landing_path | env: LANDING_PATH
+landing_path: /Volumes/ds_prod_db/prod_health_pressure/landing
 
 mlflow:
-  experiment_path: /Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr
+  # spark: health.pressure.mlflow_experiment | env: MLFLOW_EXPERIMENT
+  experiment_path: /Users/christian.bellen@indicium.tech/pressure-risk-prod
 
 model:
-  name:             ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier
+  # spark: health.pressure.model_name | env: MODEL_NAME
+  name:             ds_prod_db.prod_health_pressure.pressure_risk_classifier
+
+  # spark: health.pressure.retrain_job_name | env: RETRAIN_JOB_NAME
   retrain_job_name: job_health_pressure_retrain
 
 training:
+  # spark: health.pressure.train_end | env: TRAIN_END
   train_end:  "202412"
+
+  # spark: health.pressure.val_end | env: VAL_END
   val_end:    "202506"
+
+  # spark: health.pressure.test_start | env: TEST_START
   test_start: "202507"
 
 thresholds:
+  # spark: health.pressure.target_percentile | env: TARGET_PERCENTILE
   target_percentile:     0.85
+
+  # spark: health.pressure.precision_k_threshold | env: PRECISION_K_THRESHOLD
   precision_k_threshold: 0.55
+
+  # spark: health.pressure.min_consecutive_below | env: MIN_CONSECUTIVE_BELOW
   min_consecutive_below: 2
+
+  # spark: health.pressure.scoring_min_quality | env: SCORING_MIN_QUALITY
   scoring_min_quality:   0.5
+
+  # spark: health.pressure.ab_challenger_pct | env: AB_CHALLENGER_PCT
   ab_challenger_pct:     0.20
+
+  # spark: health.pressure.drift_seasonal_features | env: DRIFT_SEASONAL_FEATURES
+  # env var: lista separada por vírgula, ex: mes,quarter,is_semester1,is_rainy_season
   drift_seasonal_features:
     - mes
     - quarter
@@ -41,8 +97,14 @@ thresholds:
     - is_rainy_season
 
 lgbm:
+  # spark: health.pressure.num_boost_round | env: NUM_BOOST_ROUND
   num_boost_round:       500
+
+  # spark: health.pressure.early_stopping | env: EARLY_STOPPING
   early_stopping_rounds: 50
+
+  # spark: health.pressure.lgbm_params_json | env: LGBM_PARAMS_JSON
+  # env var: JSON serializado, ex: {"objective":"binary","num_leaves":63,...}
   params:
     objective:         binary
     metric:            binary_logloss

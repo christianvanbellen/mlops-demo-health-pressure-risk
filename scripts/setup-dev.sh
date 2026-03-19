@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # scripts/setup-dev.sh
-# Define as variáveis de ambiente necessárias para rodar os módulos src/ localmente.
+# Sobrescreve as variáveis de ambiente de configuração para desenvolvimento local.
 # Uso: source scripts/setup-dev.sh
+#
+# Só é necessário quando você quiser sobrescrever os defaults do ConfigLoader
+# (src/config.py). Em desenvolvimento normal os defaults já refletem o ambiente dev.
 #
 # Equivalente PowerShell: scripts/setup-dev.ps1
 
@@ -41,4 +44,4 @@ export LGBM_PARAMS_JSON='{"objective":"binary","metric":"binary_logloss","boosti
 export NUM_BOOST_ROUND="500"
 export EARLY_STOPPING="50"
 
-echo "✓ Variáveis de ambiente de desenvolvimento configuradas."
+echo "Variaveis de ambiente de desenvolvimento configuradas."

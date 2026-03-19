@@ -40,38 +40,8 @@ for mod in PYSPARK_MOCKS:
 
 # Garante que src/ está no PYTHONPATH
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-# Variáveis de ambiente necessárias para importar módulos que dependem de config.py
-_DEV_VARS = {
-    "CATALOG": "ds_dev_db",
-    "SCHEMA": "dev_christian_van_bellen",
-    "TABLE_BRONZE_SRAG": "ds_dev_db.dev_christian_van_bellen.bronze_srag",
-    "TABLE_BRONZE_HOSPITAIS_LEITOS": "ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos",
-    "TABLE_BRONZE_CNES": "ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos",
-    "TABLE_SILVER_SRAG": "ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana",
-    "TABLE_SILVER_CAPACITY": "ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes",
-    "TABLE_GOLD_FEATURES": "ds_dev_db.dev_christian_van_bellen.gold_pressure_features",
-    "TABLE_GOLD_SCORING": "ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring",
-    "TABLE_GOLD_MONITOR": "ds_dev_db.dev_christian_van_bellen.monitoring_performance",
-    "LANDING_PATH": "/Volumes/ds_dev_db/dev_christian_van_bellen/landing",
-    "MLFLOW_EXPERIMENT": "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr",
-    "MODEL_NAME": "ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier",
-    "RETRAIN_JOB_NAME": "job_health_pressure_retrain",
-    "TRAIN_END": "202412",
-    "VAL_END": "202506",
-    "TEST_START": "202507",
-    "TARGET_PERCENTILE": "0.85",
-    "PRECISION_K_THRESHOLD": "0.55",
-    "MIN_CONSECUTIVE_BELOW": "2",
-    "SCORING_MIN_QUALITY": "0.5",
-    "AB_CHALLENGER_PCT": "0.20",
-    "DRIFT_SEASONAL_FEATURES": "mes,quarter,is_semester1,is_rainy_season",
-    "LGBM_PARAMS_JSON": '{"objective":"binary","metric":"binary_logloss","boosting_type":"gbdt","num_leaves":63,"learning_rate":0.05,"feature_fraction":0.8,"bagging_fraction":0.8,"bagging_freq":5,"min_child_samples":20,"reg_alpha":0.1,"reg_lambda":0.1,"verbose":-1}',
-    "NUM_BOOST_ROUND": "500",
-    "EARLY_STOPPING": "50",
-}
-for _k, _v in _DEV_VARS.items():
-    os.environ.setdefault(_k, _v)
+# ConfigLoader (src/config.py) tem defaults de desenvolvimento hardcodados —
+# não é necessário setar variáveis de ambiente para a suíte de testes unitários.
 
 import pandas as pd  # noqa: E402
 import pytest  # noqa: E402
