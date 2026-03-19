@@ -39,7 +39,7 @@ resources:
             parameters: ["--live"]
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -54,7 +54,7 @@ resources:
             parameters: ["--live"]
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -68,7 +68,7 @@ resources:
             python_file: ../src/transforms/silver_capacity_municipio_mes.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -81,7 +81,7 @@ resources:
             python_file: ../src/transforms/silver_srag_municipio_semana.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -95,7 +95,7 @@ resources:
             python_file: ../src/transforms/gold_pressure_features.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -108,7 +108,7 @@ resources:
             python_file: ../src/scoring/batch_score.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -121,7 +121,7 @@ resources:
             python_file: ../src/monitoring/performance_monitor.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -134,7 +134,7 @@ resources:
             python_file: ../src/monitoring/feature_drift_monitor.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -149,7 +149,7 @@ resources:
             python_file: ../src/monitoring/retrain_trigger.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 600
@@ -202,7 +202,7 @@ resources:
             python_file: ../src/training/train_baseline_lr.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -216,7 +216,7 @@ resources:
             python_file: ../src/training/train_gbt.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -232,7 +232,7 @@ resources:
             python_file: ../src/training/evaluate.py
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0313-185050-12k2qcl2"
+          existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
