@@ -41,9 +41,17 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-# sources = ["src"] expõe o conteúdo de src/ como pacotes top-level
-# (ingestion, transforms, training, scoring, monitoring, quality, config)
-sources = ["src"]
+packages = [
+  "src/ingestion",
+  "src/transforms",
+  "src/training",
+  "src/scoring",
+  "src/monitoring",
+  "src/quality",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/config.py" = "config.py"
 
 [tool.hatch.build.targets.editable]
 sources = ["src"]
