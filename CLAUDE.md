@@ -218,3 +218,5 @@ https://github.com/christianvanbellen/mlops-demo-health-pressure-risk/compare/<b
 - **Nunca** commitar diretamente na `main`
 - **Nunca** abrir PR sem `--reviewer christianvanbellen`
 - **Um PR por tarefa** — não acumular alterações não relacionadas
+- Se `gh auth status` falhar, reportar o erro e fornecer o link para abrir o PR
+  manualmente em vez de omitir silenciosamente

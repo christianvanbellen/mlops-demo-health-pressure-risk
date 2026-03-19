@@ -40,6 +40,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
           max_retries: 1
 
@@ -53,6 +55,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
           max_retries: 1
 
@@ -65,6 +69,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
 
         - task_key: silver_srag
@@ -76,6 +82,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
 
         - task_key: gold_features
@@ -88,6 +96,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
 
         - task_key: batch_score
@@ -99,6 +109,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
 
         - task_key: performance_monitor
@@ -110,6 +122,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
 
         - task_key: feature_drift_monitor
@@ -121,6 +135,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
 
         - task_key: retrain_trigger
@@ -134,6 +150,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: weekly_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 600
 
     # ── Job 2: Retraining ────────────────────────────────
@@ -185,6 +203,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
           max_retries: 1
 
@@ -197,6 +217,8 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
           max_retries: 1
 
@@ -211,4 +233,6 @@ resources:
           # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
           # job_cluster_key: retrain_ml_cluster
           existing_cluster_id: "0313-185050-12k2qcl2"
+          libraries:
+            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
