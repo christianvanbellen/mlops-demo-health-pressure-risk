@@ -1,12 +1,66 @@
 # Guia do Desenvolvedor — Radar de Pressão Assistencial
 
+<!--
+  NOTA: Este projeto usa Claude Code (IA assistida) para desenvolvimento.
+  A gh CLI é usada pelo Claude Code para abrir pull requests automaticamente,
+  atribuir revisor (christianvanbellen) e seguir o template de PR padrão.
+  Instale e autentique a gh CLI antes de iniciar (ver seção abaixo).
+-->
+
 ## Pré-requisitos
 
 - Git
 - Python 3.11+
 - UV 0.9.0+ (gerenciador de dependências)
 - Databricks CLI standalone (não via pip)
+- **gh CLI** (GitHub CLI) — necessário para abrir PRs automaticamente
 - Acesso ao workspace Databricks (solicitar ao tech lead)
+
+## Instalação do gh CLI
+
+A `gh` CLI é usada pelo fluxo de desenvolvimento assistido por IA (Claude Code)
+para abrir pull requests automaticamente com o template padrão e atribuir revisor.
+
+### macOS
+
+```bash
+brew install gh
+```
+
+### Linux (Debian/Ubuntu)
+
+```bash
+sudo apt install gh
+# ou, via repositório oficial:
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh
+```
+
+### Windows
+
+```powershell
+winget install GitHub.cli
+```
+
+### Autenticação
+
+```bash
+gh auth login
+# Escolher: GitHub.com → HTTPS → Login with a web browser
+```
+
+Verificar: `gh auth status`
+
+### Configurar revisor padrão (uma vez por repositório)
+
+O revisor `christianvanbellen` é adicionado automaticamente pelo Claude Code
+via `--reviewer` no `gh pr create`. Nenhuma configuração adicional necessária —
+basta estar autenticado.
+
+---
 
 ## Instalação do UV
 
@@ -101,10 +155,21 @@ refactor: refatoração sem mudança de comportamento
 1. Criar branch: `git checkout -b feature/minha-feature`
 2. Desenvolver e testar localmente
 3. Rodar checks: `uv run ruff check src/ && uv run pytest tests/`
-4. Push: `git push origin feature/minha-feature`
-5. Abrir PR no GitHub usando o template
+4. Push: `git push -u origin feature/minha-feature`
+5. Abrir PR via gh CLI (usa o template `.github/pull_request_template.md`):
+
+```bash
+gh pr create \
+  --title "feat: descrição da mudança" \
+  --body-file .github/pull_request_template.md \
+  --reviewer christianvanbellen
+```
+
 6. Aguardar CI passar (lint + testes + bundle validate)
-7. Solicitar review
+7. Review e merge
+
+> **Claude Code:** ao abrir PRs automaticamente, usa `gh pr create` com
+> `--reviewer christianvanbellen` e o body gerado a partir do template.
 
 ### Deploy
 
@@ -124,6 +189,10 @@ refactor: refatoração sem mudança de comportamento
 | `uv add <pacote>` | Adiciona dependência de produção |
 | `uv add --dev <pacote>` | Adiciona dependência de dev |
 | `uv lock` | Regera o uv.lock |
+| `gh pr create --reviewer christianvanbellen` | Abre PR com revisor padrão |
+| `gh pr list` | Lista PRs abertas |
+| `gh pr status` | Status da PR da branch atual |
+| `gh auth status` | Verifica autenticação do gh CLI |
 
 ## Adicionando dependências
 
