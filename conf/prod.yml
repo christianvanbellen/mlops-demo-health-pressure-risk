@@ -1,3 +1,6 @@
+# REFERÊNCIA APENAS — este arquivo não é lido em runtime.
+# A configuração é injetada via variáveis de ambiente (DAB em produção,
+# scripts/setup-dev.sh ou scripts/setup-dev.ps1 em desenvolvimento local).
 catalog: ds_prod_db
 schema:  prod_health_pressure
 

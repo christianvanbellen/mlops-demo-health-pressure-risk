@@ -1,56 +1,43 @@
 """
 Módulo central de configuração do projeto.
-Lê conf/{env}.yml e expõe todas as constantes para os demais módulos importarem.
+Lê variáveis de ambiente e expõe todas as constantes para os demais módulos importarem.
 Uso: from config import CATALOG, TABLE_BRONZE_SRAG, ...
+
+Em desenvolvimento, defina as variáveis via scripts/setup-dev.sh (bash) ou
+scripts/setup-dev.ps1 (PowerShell). Em produção, o DAB injeta automaticamente
+via environment_variables nos jobs (resources/jobs.yml).
 """
 
+import json
 import os
-from pathlib import Path
-
-import yaml
-
-
-def _load_config() -> dict:
-    env = os.environ.get("APP_ENV", "dev")
-    conf_dir = Path(__file__).parent.parent / "conf"
-    path = conf_dir / f"{env}.yml"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {path}. Set APP_ENV to a valid environment (dev, prod)."
-        )
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-
-_cfg = _load_config()
 
 # ── Ambiente ─────────────────────────────────────────────────────
-CATALOG = _cfg["catalog"]
-SCHEMA = _cfg["schema"]
+CATALOG = os.environ["CATALOG"]
+SCHEMA = os.environ["SCHEMA"]
 
 # ── Tabelas Bronze ────────────────────────────────────────────────
-TABLE_BRONZE_SRAG = _cfg["tables"]["bronze_srag"]
-TABLE_BRONZE_HOSPITAIS_LEITOS = _cfg["tables"]["bronze_hospitais_leitos"]
-TABLE_BRONZE_CNES = _cfg["tables"]["bronze_cnes"]
+TABLE_BRONZE_SRAG = os.environ["TABLE_BRONZE_SRAG"]
+TABLE_BRONZE_HOSPITAIS_LEITOS = os.environ["TABLE_BRONZE_HOSPITAIS_LEITOS"]
+TABLE_BRONZE_CNES = os.environ["TABLE_BRONZE_CNES"]
 
 # ── Tabelas Silver ────────────────────────────────────────────────
-TABLE_SILVER_SRAG = _cfg["tables"]["silver_srag"]
-TABLE_SILVER_CAPACITY = _cfg["tables"]["silver_capacity"]
+TABLE_SILVER_SRAG = os.environ["TABLE_SILVER_SRAG"]
+TABLE_SILVER_CAPACITY = os.environ["TABLE_SILVER_CAPACITY"]
 
 # ── Tabelas Gold ──────────────────────────────────────────────────
-TABLE_GOLD_FEATURES = _cfg["tables"]["gold_features"]
-TABLE_GOLD_SCORING = _cfg["tables"]["gold_scoring"]
-TABLE_GOLD_MONITOR = _cfg["tables"]["gold_monitoring"]
+TABLE_GOLD_FEATURES = os.environ["TABLE_GOLD_FEATURES"]
+TABLE_GOLD_SCORING = os.environ["TABLE_GOLD_SCORING"]
+TABLE_GOLD_MONITOR = os.environ["TABLE_GOLD_MONITOR"]
 
 # ── Volume de landing ─────────────────────────────────────────────
-LANDING_PATH = _cfg.get("landing_path", f"/Volumes/{CATALOG}/{SCHEMA}/landing")
+LANDING_PATH = os.environ["LANDING_PATH"]
 
 # ── MLflow ────────────────────────────────────────────────────────
-MLFLOW_EXPERIMENT = _cfg["mlflow"]["experiment_path"]
+MLFLOW_EXPERIMENT = os.environ["MLFLOW_EXPERIMENT"]
 
 # ── Model Registry ────────────────────────────────────────────────
-MODEL_NAME = _cfg["model"]["name"]
-RETRAIN_JOB_NAME = _cfg["model"]["retrain_job_name"]
+MODEL_NAME = os.environ["MODEL_NAME"]
+RETRAIN_JOB_NAME = os.environ["RETRAIN_JOB_NAME"]
 
 # ── Features ─────────────────────────────────────────────────────
 FEATURE_COLS = [
@@ -80,21 +67,19 @@ FEATURE_COLS = [
 TARGET_COL = "target_alta_pressao"
 
 # ── Split temporal ────────────────────────────────────────────────
-TRAIN_END = _cfg["training"]["train_end"]
-VAL_END = _cfg["training"]["val_end"]
-TEST_START = _cfg["training"]["test_start"]
+TRAIN_END = os.environ["TRAIN_END"]
+VAL_END = os.environ["VAL_END"]
+TEST_START = os.environ["TEST_START"]
 
 # ── Thresholds operacionais ───────────────────────────────────────
-TARGET_PERCENTILE = _cfg["thresholds"]["target_percentile"]
-PRECISION_K_THRESHOLD = _cfg["thresholds"]["precision_k_threshold"]
-MIN_CONSECUTIVE_BELOW = _cfg["thresholds"]["min_consecutive_below"]
-SCORING_MIN_QUALITY = _cfg["thresholds"]["scoring_min_quality"]
-AB_CHALLENGER_PCT = _cfg["thresholds"]["ab_challenger_pct"]
-DRIFT_SEASONAL_FEATURES = _cfg["thresholds"].get(
-    "drift_seasonal_features", ["mes", "quarter", "is_semester1", "is_rainy_season"]
-)
+TARGET_PERCENTILE = float(os.environ["TARGET_PERCENTILE"])
+PRECISION_K_THRESHOLD = float(os.environ["PRECISION_K_THRESHOLD"])
+MIN_CONSECUTIVE_BELOW = int(os.environ["MIN_CONSECUTIVE_BELOW"])
+SCORING_MIN_QUALITY = float(os.environ["SCORING_MIN_QUALITY"])
+AB_CHALLENGER_PCT = float(os.environ["AB_CHALLENGER_PCT"])
+DRIFT_SEASONAL_FEATURES = os.environ["DRIFT_SEASONAL_FEATURES"].split(",")
 
 # ── Parâmetros LightGBM ───────────────────────────────────────────
-LGBM_PARAMS = _cfg["lgbm"]["params"]
-NUM_BOOST_ROUND = _cfg["lgbm"]["num_boost_round"]
-EARLY_STOPPING = _cfg["lgbm"]["early_stopping_rounds"]
+LGBM_PARAMS = json.loads(os.environ["LGBM_PARAMS_JSON"])
+NUM_BOOST_ROUND = int(os.environ["NUM_BOOST_ROUND"])
+EARLY_STOPPING = int(os.environ["EARLY_STOPPING"])
