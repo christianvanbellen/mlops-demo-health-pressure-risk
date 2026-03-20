@@ -432,7 +432,9 @@ def treinar(spark: SparkSession, args) -> str:
     test_start = args.test_start
 
     assert mlflow_experiment_name is not None, "mlflow_experiment não pode ser None"
-    assert mlflow_experiment_name != "None", f"mlflow_experiment resolveu para string 'None': {mlflow_experiment_name!r}"
+    assert mlflow_experiment_name != "None", (
+        f"mlflow_experiment resolveu para string 'None': {mlflow_experiment_name!r}"
+    )
     mlflow.set_experiment(experiment_name=mlflow_experiment_name)
 
     with mlflow.start_run(run_name="baseline_logistic_regression") as run:
