@@ -65,7 +65,6 @@
 #   srag_consolidation_flag      = "consolidado" | "estabilizando" | "recente"
 #   data_quality_score           = 0.3 | 0.5 | 0.8 | 1.0
 
-from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
@@ -533,10 +532,8 @@ def _adicionar_metadados(df):
 def transformar(spark: SparkSession):
     """
     Executa o pipeline completo Silver → Gold de features de pressão assistencial v2.
-    Grava via Databricks Feature Engineering Client (drop + recria para garantir schema limpo).
+    Grava via Delta nativo (drop + recria para garantir schema limpo).
     """
-    fe = FeatureEngineeringClient()
-
     print("Lendo fontes silver ...")
     srag = spark.table(TABLE_SILVER_SRAG)
     cap = spark.table(TABLE_SILVER_CAPACITY)
@@ -553,14 +550,8 @@ def transformar(spark: SparkSession):
     df = _validar_e_filtrar(df)
     df = _adicionar_metadados(df)
 
-    # Feature Store — drop e recria para garantir schema e primary keys limpos
-    try:
-        fe.get_table(TABLE_GOLD_FEATURES)
-        table_exists = True
-    except Exception:
-        table_exists = False
-
-    if table_exists:
+    # Drop + recria para garantir schema limpo a cada execução
+    if spark.catalog.tableExists(TABLE_GOLD_FEATURES):
         spark.sql(f"DROP TABLE IF EXISTS {TABLE_GOLD_FEATURES}")
         print("  Tabela anterior removida")
 
@@ -573,16 +564,18 @@ def transformar(spark: SparkSession):
     )
 
     print(f"\nCriando feature table {TABLE_GOLD_FEATURES} ...")
-    fe.create_table(
-        name=TABLE_GOLD_FEATURES,
-        primary_keys=["municipio_id", "competencia"],
-        df=df,
-        description=(
-            "Feature store de pressão assistencial respiratória — v2. "
-            "Grain: municipio_id x competencia (AAAAMM). "
-            "Target: casos_por_leito do mês seguinte >= percentil 85 nacional. "
-            "target_definition_version=v2."
-        ),
+    (
+        df.write.format("delta")
+        .mode("overwrite")
+        .option("overwriteSchema", "true")
+        .saveAsTable(TABLE_GOLD_FEATURES)
+    )
+    spark.sql(
+        f"COMMENT ON TABLE {TABLE_GOLD_FEATURES} IS "
+        f"'Feature store de pressão assistencial respiratória — v2. "
+        f"Grain: municipio_id x competencia (AAAAMM). "
+        f"Target: casos_por_leito do mês seguinte >= percentil 85 nacional. "
+        f"target_definition_version=v2.'"
     )
     print(f"✓ Feature table {TABLE_GOLD_FEATURES} criada.")
 
