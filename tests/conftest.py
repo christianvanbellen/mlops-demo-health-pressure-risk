@@ -26,8 +26,8 @@ PYSPARK_MOCKS = [
     # DQX — não disponível fora do cluster Databricks
     "databricks.labs.dqx",
     "databricks.labs.dqx.engine",
-    "databricks.labs.dqx.col_functions",
-    "databricks.labs.dqx.row_checks",
+    "databricks.labs.dqx.check_funcs",
+    "databricks.labs.dqx.rule",
     "databricks.sdk",
     # Evidently — não instalado no ambiente de testes unitários locais
     "evidently",

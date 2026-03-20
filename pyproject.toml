@@ -19,7 +19,7 @@ authors = [
 # evitar conflitos de versão no cluster.
 dependencies = [
   # Qualidade de dados (ausente no DBR 16.4 ML)
-  "databricks-labs-dqx>=0.5.0",
+  "databricks-labs-dqx>=0.13.0,<0.14.0",
 
   # Feature drift (ausente no DBR 16.4 ML)
   "evidently>=0.7.0",

@@ -13,13 +13,15 @@
 from datetime import datetime
 
 from databricks.labs.dqx.engine import DQEngine
+from databricks.labs.dqx.rule import DQRowRule
+from databricks.sdk import WorkspaceClient
 from pyspark.sql import DataFrame, SparkSession
 
 
 def run_checks(
     spark: SparkSession,
     df: DataFrame,
-    checks: list[dict],
+    checks: list[DQRowRule],
     table_name: str,
     quarantine_table: str,
 ) -> DataFrame:
@@ -39,8 +41,9 @@ def run_checks(
     Returns:
         DataFrame com somente as linhas que passaram em todos os checks "error".
     """
-    engine = DQEngine(spark)
-    valid_df, quarantine_df = engine.apply_checks_by_metadata_and_split(df, checks)
+    ws = WorkspaceClient()
+    engine = DQEngine(ws, spark)
+    valid_df, quarantine_df = engine.apply_checks_and_split(df, checks)
 
     qtd_validas = valid_df.count()
     qtd_quarentena = quarantine_df.count()
