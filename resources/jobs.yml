@@ -11,7 +11,7 @@ resources:
       job_clusters:
         - job_cluster_key: weekly_ml_cluster
           new_cluster:
-            spark_version: "16.4.x-ml-scala2.12"
+            spark_version: "16.4.x-cpu-ml-scala2.12"
             node_type_id: "i3.xlarge"
             num_workers: 1
             policy_id: "00069DFD463E0DBC"
@@ -187,7 +187,7 @@ resources:
       job_clusters:
         - job_cluster_key: retrain_ml_cluster
           new_cluster:
-            spark_version: "16.4.x-ml-scala2.12"
+            spark_version: "16.4.x-cpu-ml-scala2.12"
             node_type_id: "i3.xlarge"
             num_workers: 1
             policy_id: "00069DFD463E0DBC"
