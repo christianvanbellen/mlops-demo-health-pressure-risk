@@ -182,10 +182,22 @@ Exemplos:
 
 ### 5. Abrir PR via gh CLI
 
+**Antes de rodar `gh pr create`, o Claude Code deve:**
+
+1. Gerar o corpo do PR preenchendo **cada seção** do template
+   (`.github/pull_request_template.md`) com base no trabalho realizado
+   na sessão atual — **nunca deixar seção vazia**.
+2. Marcar os itens do checklist que foram verificados durante a sessão
+   (ex: se rodou `pytest` e passou → marcar `[x]`; se não rodou → deixar `[ ]`).
+3. Salvar o corpo preenchido em `/tmp/pr_body.md`.
+4. Usar `--body-file /tmp/pr_body.md` no `gh pr create`.
+
+O comando final deve sempre ser:
+
 ```bash
 gh pr create \
   --title "<tipo>(<escopo>): <descrição>" \
-  --body-file .github/pull_request_template.md \
+  --body-file /tmp/pr_body.md \
   --reviewer christianvanbellen
 ```
 
@@ -205,7 +217,7 @@ PR pronto para abrir. Rode no PowerShell:
 
 gh pr create `
   --title "<título>" `
-  --body-file .github/pull_request_template.md `
+  --body-file /tmp/pr_body.md `
   --reviewer christianvanbellen
 
 Ou abra manualmente:
