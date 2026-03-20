@@ -20,7 +20,7 @@ class TestAvaliarTrigger:
             "simulated":          [True],
             "monitor_date":       ["2026-03-17"],
         })
-        resultado = _avaliar_trigger(df)
+        resultado = _avaliar_trigger(df, precision_k_threshold=0.55, min_consecutive_below=2)
         assert not resultado["trigger"]
         assert "insuficiente" in resultado["reason"].lower()
 
@@ -35,7 +35,7 @@ class TestAvaliarTrigger:
             "simulated":          [True] * 6,
             "monitor_date":       ["2026-03-17"] * 6,
         })
-        resultado = _avaliar_trigger(df)
+        resultado = _avaliar_trigger(df, precision_k_threshold=0.55, min_consecutive_below=2)
         assert not resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 0
 
@@ -50,7 +50,7 @@ class TestAvaliarTrigger:
             "simulated":          [True] * 6,
             "monitor_date":       ["2026-03-17"] * 6,
         })
-        resultado = _avaliar_trigger(df)
+        resultado = _avaliar_trigger(df, precision_k_threshold=0.55, min_consecutive_below=2)
         assert resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 2
         assert "degradação" in resultado["reason"].lower()
@@ -66,7 +66,7 @@ class TestAvaliarTrigger:
             "simulated":          [True] * 6,
             "monitor_date":       ["2026-03-17"] * 6,
         })
-        resultado = _avaliar_trigger(df)
+        resultado = _avaliar_trigger(df, precision_k_threshold=0.55, min_consecutive_below=2)
         assert not resultado["trigger"]
         assert resultado["n_consecutivas_abaixo"] == 1
 
@@ -81,7 +81,7 @@ class TestAvaliarTrigger:
             "simulated":          [True] * 8,
             "monitor_date":       ["2026-03-17"] * 8,
         })
-        resultado = _avaliar_trigger(df)
+        resultado = _avaliar_trigger(df, precision_k_threshold=0.55, min_consecutive_below=2)
         assert resultado["trigger"]
         assert "abrupta" in resultado["reason"].lower()
 

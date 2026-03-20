@@ -21,32 +21,6 @@ resources:
               availability: SPOT_WITH_FALLBACK
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
-              health.pressure.catalog: ${var.catalog}
-              health.pressure.schema: ${var.schema}
-              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
-              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
-              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
-              health.pressure.table_silver_srag: ${var.table_silver_srag}
-              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
-              health.pressure.table_gold_features: ${var.table_gold_features}
-              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
-              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
-              health.pressure.landing_path: ${var.landing_path}
-              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
-              health.pressure.model_name: ${var.model_name}
-              health.pressure.retrain_job_name: ${var.retrain_job_name}
-              health.pressure.train_end: ${var.train_end}
-              health.pressure.val_end: ${var.val_end}
-              health.pressure.test_start: ${var.test_start}
-              health.pressure.target_percentile: ${var.target_percentile}
-              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
-              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
-              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
-              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
-              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
-              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
-              health.pressure.num_boost_round: ${var.num_boost_round}
-              health.pressure.early_stopping: ${var.early_stopping}
             custom_tags:
               project: "health-pressure-risk"
               job: "weekly"
@@ -66,7 +40,16 @@ resources:
           description: "Reingestão das fontes live (SRAG + Hospitais e Leitos)"
           spark_python_task:
             python_file: ../src/ingestion/srag_ingest.py
-            parameters: ["--live"]
+            parameters:
+              - "--live"
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_bronze_srag"
+              - ${var.table_bronze_srag}
+              - "--landing_path"
+              - ${var.landing_path}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -84,7 +67,16 @@ resources:
             - task_key: ingestao_bronze
           spark_python_task:
             python_file: ../src/ingestion/hospitais_leitos_ingest.py
-            parameters: ["--live"]
+            parameters:
+              - "--live"
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_bronze_hospitais_leitos"
+              - ${var.table_bronze_hospitais_leitos}
+              - "--landing_path"
+              - ${var.landing_path}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -102,6 +94,15 @@ resources:
             - task_key: ingestao_hospitais
           spark_python_task:
             python_file: ../src/transforms/silver_capacity_municipio_mes.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_bronze_hospitais_leitos"
+              - ${var.table_bronze_hospitais_leitos}
+              - "--table_silver_capacity"
+              - ${var.table_silver_capacity}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -118,6 +119,15 @@ resources:
             - task_key: ingestao_bronze
           spark_python_task:
             python_file: ../src/transforms/silver_srag_municipio_semana.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_bronze_srag"
+              - ${var.table_bronze_srag}
+              - "--table_silver_srag"
+              - ${var.table_silver_srag}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -135,6 +145,19 @@ resources:
             - task_key: silver_srag
           spark_python_task:
             python_file: ../src/transforms/gold_pressure_features.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_silver_srag"
+              - ${var.table_silver_srag}
+              - "--table_silver_capacity"
+              - ${var.table_silver_capacity}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--target_percentile"
+              - ${var.target_percentile}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -151,6 +174,21 @@ resources:
             - task_key: gold_features
           spark_python_task:
             python_file: ../src/scoring/batch_score.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--table_gold_scoring"
+              - ${var.table_gold_scoring}
+              - "--model_name"
+              - ${var.model_name}
+              - "--scoring_min_quality"
+              - ${var.scoring_min_quality}
+              - "--ab_challenger_pct"
+              - ${var.ab_challenger_pct}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -167,6 +205,23 @@ resources:
             - task_key: batch_score
           spark_python_task:
             python_file: ../src/monitoring/performance_monitor.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--table_gold_scoring"
+              - ${var.table_gold_scoring}
+              - "--table_gold_monitor"
+              - ${var.table_gold_monitor}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--model_name"
+              - ${var.model_name}
+              - "--precision_k_threshold"
+              - ${var.precision_k_threshold}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -183,6 +238,21 @@ resources:
             - task_key: performance_monitor
           spark_python_task:
             python_file: ../src/monitoring/feature_drift_monitor.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--table_gold_scoring"
+              - ${var.table_gold_scoring}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--train_end"
+              - ${var.train_end}
+              - "--drift_seasonal_features"
+              - ${var.drift_seasonal_features}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -201,6 +271,21 @@ resources:
             - task_key: feature_drift_monitor
           spark_python_task:
             python_file: ../src/monitoring/retrain_trigger.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_monitor"
+              - ${var.table_gold_monitor}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--precision_k_threshold"
+              - ${var.precision_k_threshold}
+              - "--min_consecutive_below"
+              - ${var.min_consecutive_below}
+              - "--retrain_job_name"
+              - ${var.retrain_job_name}
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -233,32 +318,6 @@ resources:
               availability: SPOT_WITH_FALLBACK
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
-              health.pressure.catalog: ${var.catalog}
-              health.pressure.schema: ${var.schema}
-              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
-              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
-              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
-              health.pressure.table_silver_srag: ${var.table_silver_srag}
-              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
-              health.pressure.table_gold_features: ${var.table_gold_features}
-              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
-              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
-              health.pressure.landing_path: ${var.landing_path}
-              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
-              health.pressure.model_name: ${var.model_name}
-              health.pressure.retrain_job_name: ${var.retrain_job_name}
-              health.pressure.train_end: ${var.train_end}
-              health.pressure.val_end: ${var.val_end}
-              health.pressure.test_start: ${var.test_start}
-              health.pressure.target_percentile: ${var.target_percentile}
-              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
-              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
-              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
-              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
-              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
-              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
-              health.pressure.num_boost_round: ${var.num_boost_round}
-              health.pressure.early_stopping: ${var.early_stopping}
             custom_tags:
               project: "health-pressure-risk"
               job: "retrain"
@@ -287,6 +346,23 @@ resources:
           description: "Treina Logistic Regression baseline"
           spark_python_task:
             python_file: ../src/training/train_baseline_lr.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--model_name"
+              - ${var.model_name}
+              - "--train_end"
+              - ${var.train_end}
+              - "--val_end"
+              - ${var.val_end}
+              - "--test_start"
+              - ${var.test_start}
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -304,6 +380,29 @@ resources:
             - task_key: train_baseline_lr
           spark_python_task:
             python_file: ../src/training/train_gbt.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--model_name"
+              - ${var.model_name}
+              - "--train_end"
+              - ${var.train_end}
+              - "--val_end"
+              - ${var.val_end}
+              - "--test_start"
+              - ${var.test_start}
+              - "--lgbm_params_json"
+              - ${var.lgbm_params_json}
+              - "--num_boost_round"
+              - ${var.num_boost_round}
+              - "--early_stopping"
+              - ${var.early_stopping}
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
@@ -323,6 +422,23 @@ resources:
             - task_key: train_gbt
           spark_python_task:
             python_file: ../src/training/evaluate.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--schema"
+              - ${var.schema}
+              - "--table_gold_features"
+              - ${var.table_gold_features}
+              - "--mlflow_experiment"
+              - ${var.mlflow_experiment}
+              - "--model_name"
+              - ${var.model_name}
+              - "--train_end"
+              - ${var.train_end}
+              - "--val_end"
+              - ${var.val_end}
+              - "--test_start"
+              - ${var.test_start}
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:

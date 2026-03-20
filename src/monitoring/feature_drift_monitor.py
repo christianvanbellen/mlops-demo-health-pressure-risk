@@ -40,20 +40,9 @@ except ImportError:
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import (
-    CATALOG,
-    DRIFT_SEASONAL_FEATURES,
-    FEATURE_COLS,
-    MLFLOW_EXPERIMENT,
-    SCHEMA,
-    TABLE_GOLD_FEATURES,
-    TABLE_GOLD_SCORING,
-    TRAIN_END,
-)
+from cli import FEATURE_COLS
 
 # ── constantes ────────────────────────────────────────────────────
-TABLE_DRIFT = f"{CATALOG}.{SCHEMA}.monitoring_feature_drift"
-
 PSI_WARN_THRESHOLD = 0.20  # drift moderado
 PSI_SEVERE_THRESHOLD = 0.25  # drift severo
 DRIFT_SHARE_THRESHOLD = 0.30  # % de features com drift → alerta geral
@@ -63,16 +52,18 @@ _MAX_REF_ROWS = 50_000
 
 
 # ── carregamento de dados ─────────────────────────────────────────
-def _carregar_referencia(spark: SparkSession) -> pd.DataFrame:
+def _carregar_referencia(
+    spark: SparkSession, table_gold_features: str, train_end: str
+) -> pd.DataFrame:
     """
     Carrega dados de referência (período de treino) da feature table.
-    Usa competências <= TRAIN_END com target não nulo.
+    Usa competências <= train_end com target não nulo.
     Amostra até 50.000 linhas para eficiência.
     Retorna pandas DataFrame com FEATURE_COLS.
     """
     df = (
-        spark.table(TABLE_GOLD_FEATURES)
-        .filter(F.col("competencia") <= TRAIN_END)
+        spark.table(table_gold_features)
+        .filter(F.col("competencia") <= train_end)
         .filter(F.col("target_alta_pressao").isNotNull())
         .select(*FEATURE_COLS)
         .dropna()
@@ -81,8 +72,8 @@ def _carregar_referencia(spark: SparkSession) -> pd.DataFrame:
     total = df.count()
     if total == 0:
         raise ValueError(
-            f"Nenhum dado de referência encontrado em {TABLE_GOLD_FEATURES} "
-            f"para competencias <= {TRAIN_END}."
+            f"Nenhum dado de referência encontrado em {table_gold_features} "
+            f"para competencias <= {train_end}."
         )
 
     if total > _MAX_REF_ROWS:
@@ -93,24 +84,26 @@ def _carregar_referencia(spark: SparkSession) -> pd.DataFrame:
     return df.toPandas()
 
 
-def _carregar_atual(spark: SparkSession) -> tuple[pd.DataFrame, str]:
+def _carregar_atual(
+    spark: SparkSession, table_gold_features: str, table_gold_scoring: str
+) -> tuple[pd.DataFrame, str]:
     """
     Carrega features da competência mais recente em gold_pressure_scoring.
     Retorna (pandas DataFrame com FEATURE_COLS, competencia).
     """
     # identifica a competência mais recente scored
     ultima = (
-        spark.table(TABLE_GOLD_SCORING)
+        spark.table(table_gold_scoring)
         .select(F.max("competencia").alias("max_comp"))
         .collect()[0]["max_comp"]
     )
 
     if ultima is None:
-        raise ValueError(f"Nenhuma competência encontrada em {TABLE_GOLD_SCORING}.")
+        raise ValueError(f"Nenhuma competência encontrada em {table_gold_scoring}.")
 
     # busca features na gold_features para essa competência
     df = (
-        spark.table(TABLE_GOLD_FEATURES)
+        spark.table(table_gold_features)
         .filter(F.col("competencia") == ultima)
         .select(*FEATURE_COLS)
         .dropna()
@@ -119,7 +112,7 @@ def _carregar_atual(spark: SparkSession) -> tuple[pd.DataFrame, str]:
     n = df.count()
     if n == 0:
         raise ValueError(
-            f"Nenhuma feature encontrada em {TABLE_GOLD_FEATURES} para competencia={ultima}."
+            f"Nenhuma feature encontrada em {table_gold_features} para competencia={ultima}."
         )
 
     print(f"  Atual: {n:,} linhas — competencia {ultima}")
@@ -266,7 +259,7 @@ def _plot_drift_summary(drift_results: dict, competencia: str, tmpdir: str) -> N
 
 
 # ── função principal ──────────────────────────────────────────────
-def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> dict:
+def monitorar_drift(spark: SparkSession, args) -> dict:
     """
     Fluxo completo de detecção de feature drift.
 
@@ -282,13 +275,22 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
       warn   → >= 30% features com drift moderado
       alerta → >= 30% features com drift severo (PSI >= 0.25)
     """
-    exp_path = experiment_path or MLFLOW_EXPERIMENT
-    mlflow.set_experiment(exp_path)
+    catalog = args.catalog
+    schema = args.schema
+    mlflow_experiment = args.mlflow_experiment
+    table_gold_features = args.table_gold_features
+    table_gold_scoring = args.table_gold_scoring
+    train_end = args.train_end
+    drift_seasonal_features = [s.strip() for s in args.drift_seasonal_features.split(",")]
+
+    table_drift = f"{catalog}.{schema}.monitoring_feature_drift"
+
+    mlflow.set_experiment(mlflow_experiment)
 
     print("\n── Feature Drift Monitor ──────────────────────────────────")
 
-    ref_df = _carregar_referencia(spark)
-    cur_df, competencia_atual = _carregar_atual(spark)
+    ref_df = _carregar_referencia(spark, table_gold_features, train_end)
+    cur_df, competencia_atual = _carregar_atual(spark, table_gold_features, table_gold_scoring)
 
     print(f"\n  Calculando drift PSI ({len(FEATURE_COLS)} features)...")
 
@@ -305,7 +307,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
         features_drift_moderado = [
             f
             for f, r in drift_results.items()
-            if r["drift_score"] >= PSI_WARN_THRESHOLD and f not in DRIFT_SEASONAL_FEATURES
+            if r["drift_score"] >= PSI_WARN_THRESHOLD and f not in drift_seasonal_features
         ]
         n_total = len(drift_results)
         n_severo = len(features_drift_severo)
@@ -339,13 +341,13 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
         print("  " + "─" * 52)
         print(f"  Features com drift moderado : {n_moderado}/{n_total} ({drift_share:.0%})")
         print(f"  Features com drift severo   : {n_severo}/{n_total} ({severe_share:.0%})")
-        print(f"  (features sazonais excluídas do drift_share: {DRIFT_SEASONAL_FEATURES})")
+        print(f"  (features sazonais excluídas do drift_share: {drift_seasonal_features})")
         print(f"  Status geral: {status.upper()}")
 
         # ── salva summary JSON ───────────────────────────────────
         summary = {
             "competencia_atual": competencia_atual,
-            "competencia_referencia_end": TRAIN_END,
+            "competencia_referencia_end": train_end,
             "status": status,
             "drift_share": drift_share,
             "n_features_drift": n_moderado,
@@ -364,7 +366,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
                 {
                     "monitor_type": "feature_drift",
                     "competencia_atual": competencia_atual,
-                    "competencia_referencia_end": TRAIN_END,
+                    "competencia_referencia_end": train_end,
                     "status": status,
                 }
             )
@@ -408,7 +410,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
                 {
                     "monitor_date": monitor_date,
                     "competencia_atual": competencia_atual,
-                    "competencia_referencia_end": TRAIN_END,
+                    "competencia_referencia_end": train_end,
                     "feature_name": feat,
                     "drift_score": psi,
                     "drift_detected": r["drift_detected"],
@@ -423,10 +425,10 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
         drift_sdf = spark.createDataFrame(drift_pdf)
 
         drift_sdf.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
-            TABLE_DRIFT
+            table_drift
         )
 
-        print(f"\n  ✓ {len(registros)} registros gravados em {TABLE_DRIFT}")
+        print(f"\n  ✓ {len(registros)} registros gravados em {table_drift}")
 
     return {
         "status": status,
@@ -441,8 +443,12 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
 
 # ── entrypoint ────────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Monitor de feature drift — Radar de Pressão Assistencial")
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    resultado = monitorar_drift(spark)
+    resultado = monitorar_drift(spark, args)
     print(f"\nStatus: {resultado['status']}")
     print(f"Features com drift: {resultado['n_features_drift']}/{resultado['n_features_total']}")
     if resultado["features_com_drift"]:

@@ -33,68 +33,55 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from config import (
-    FEATURE_COLS,
-    MODEL_NAME,
-    TARGET_COL,
-    TEST_START,
-    TRAIN_END,
-    VAL_END,
-)
-from config import (
-    MLFLOW_EXPERIMENT as EXPERIMENT,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_FEATURES as TABLE_FEATURES,
-)
+from cli import FEATURE_COLS, TARGET_COL
 
 
 # ── aliases ─────────────────────────────────────────────────────
-def _champion_existe() -> bool:
+def _champion_existe(model_name: str) -> bool:
     """Retorna True se o alias @champion está atribuído no registry."""
     client = MlflowClient()
     try:
-        client.get_registered_model_alias(MODEL_NAME, "champion")
+        client.get_registered_model_alias(model_name, "champion")
         return True
     except Exception:
         return False
 
 
-def _get_version_por_run_id(run_id: str) -> str:
+def _get_version_por_run_id(run_id: str, model_name: str) -> str:
     """Encontra a versão registrada no registry para um dado run_id."""
     client = MlflowClient()
-    versions = client.search_model_versions(f"name='{MODEL_NAME}'")
+    versions = client.search_model_versions(f"name='{model_name}'")
     for v in versions:
         if v.run_id == run_id:
             return v.version
     raise ValueError(f"Versão não encontrada para run_id={run_id}")
 
 
-def _registrar_alias(version: str, alias: str):
+def _registrar_alias(version: str, alias: str, model_name: str):
     """Atribui um alias (champion ou challenger) a uma versão no registry."""
     client = MlflowClient()
     client.set_registered_model_alias(
-        name=MODEL_NAME,
+        name=model_name,
         alias=alias,
         version=version,
     )
     print(f"  ✓ Alias @{alias} → versão {version}")
 
 
-def _get_champion_run_id() -> str:
+def _get_champion_run_id(model_name: str) -> str:
     """Retorna o run_id da versão atualmente marcada como @champion."""
     client = MlflowClient()
-    mv = client.get_model_version_by_alias(MODEL_NAME, "champion")
+    mv = client.get_model_version_by_alias(model_name, "champion")
     return mv.run_id
 
 
 # ── dados e avaliação ────────────────────────────────────────────
-def _carregar_dados(spark: SparkSession):
+def _carregar_dados(spark: SparkSession, table_features: str):
     """
     Lê gold_pressure_features, filtra linhas com target válido,
     casteia features para double e remove nulos.
     """
-    df = spark.table(TABLE_FEATURES)
+    df = spark.table(table_features)
     df = df.filter(F.col(TARGET_COL).isNotNull())
     df = df.filter(F.col("leitos_totais") >= 10)
     for col in FEATURE_COLS:
@@ -109,15 +96,15 @@ def _carregar_dados(spark: SparkSession):
     return df
 
 
-def _split_temporal(df):
+def _split_temporal(df, train_end: str, val_end: str, test_start: str):
     """Split temporal estrito por competencia (AAAAMM)."""
-    train = df.filter(F.col("competencia") <= TRAIN_END)
-    val = df.filter((F.col("competencia") > TRAIN_END) & (F.col("competencia") <= VAL_END))
-    test = df.filter(F.col("competencia") > VAL_END)
+    train = df.filter(F.col("competencia") <= train_end)
+    val = df.filter((F.col("competencia") > train_end) & (F.col("competencia") <= val_end))
+    test = df.filter(F.col("competencia") > val_end)
     print("\n── Split temporal ──")
-    print(f"  Treino  (<=  {TRAIN_END}): {train.count():,}")
-    print(f"  Val     ({TRAIN_END[:4]}{int(TRAIN_END[4:]) + 1:02d}–{VAL_END}): {val.count():,}")
-    print(f"  Teste   (>= {TEST_START}): {test.count():,}")
+    print(f"  Treino  (<=  {train_end}): {train.count():,}")
+    print(f"  Val     ({train_end[:4]}{int(train_end[4:]) + 1:02d}–{val_end}): {val.count():,}")
+    print(f"  Teste   (>= {test_start}): {test.count():,}")
     return train, val, test
 
 
@@ -274,6 +261,7 @@ def _gerar_relatorio(
     k_ref_val: int,
     k_ref_test: int,
     next_steps: list,
+    model_name: str = "",
 ):
     """
     Serializa o estado completo da avaliação em evaluation_report.json
@@ -293,7 +281,7 @@ def _gerar_relatorio(
         "k_ref_test": k_ref_test,
         "human_gate_required": human_gate,
         "human_gate_instructions": (
-            f"Acesse o MLflow Model Registry ({MODEL_NAME}), "
+            f"Acesse o MLflow Model Registry ({model_name}), "
             f"compare @champion e @challenger e promova manualmente "
             f"atribuindo o alias @champion à versão {melhor_version}."
             if human_gate
@@ -349,23 +337,32 @@ def _inferir_model_type(run_id: str) -> str:
 
 
 # ── função principal ─────────────────────────────────────────────
-def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: str = None) -> tuple:
+def avaliar(
+    spark: SparkSession, args, lr_run_id: str, lgbm_run_id: str, retrain_id: str = None
+) -> tuple:
     """
     Compara LR e LightGBM e decide entre first_deploy, registered_challenger
     ou no_change com base na lógica champion/challenger.
 
     Retorna (decision, melhor_run_id).
     """
+    experiment = args.mlflow_experiment
+    model_name = args.model_name
+    table_features = args.table_gold_features
+    train_end = args.train_end
+    val_end = args.val_end
+    test_start = args.test_start
+
     retrain_id = retrain_id or str(uuid.uuid4())[:8]
 
-    mlflow.set_experiment(EXPERIMENT)
+    mlflow.set_experiment(experiment)
 
     with mlflow.start_run(run_name=f"evaluation_{retrain_id}") as run:
         mlflow.set_tag("retrain_id", retrain_id)
 
         # ── dados ──────────────────────────────────────────────────
-        df = _carregar_dados(spark)
-        train, val, test = _split_temporal(df)
+        df = _carregar_dados(spark, table_features)
+        train, val, test = _split_temporal(df, train_end, val_end, test_start)
 
         k_ref_val = int(val.count() * 0.15)
         k_ref_test = int(test.count() * 0.15)
@@ -411,14 +408,14 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
             key=lambda k: resultados_novos[k]["val"]["precision_at_k_ref"],
         )
         melhor = resultados_novos[melhor_key]
-        melhor_version = _get_version_por_run_id(melhor["run_id"])
+        melhor_version = _get_version_por_run_id(melhor["run_id"], model_name)
 
         # ── lógica champion/challenger ─────────────────────────────
-        champion_existe = _champion_existe()
+        champion_existe = _champion_existe(model_name)
 
         if not champion_existe:
             # CASO 1: primeiro deploy — sem gate humano
-            _registrar_alias(melhor_version, "champion")
+            _registrar_alias(melhor_version, "champion", model_name)
             decision = "first_deploy"
             human_gate = False
             champion_info = None
@@ -431,7 +428,7 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
 
         else:
             # CASO 2: já existe champion — avalia-o nos mesmos dados
-            champion_run_id = _get_champion_run_id()
+            champion_run_id = _get_champion_run_id(model_name)
             champion_model_type = _inferir_model_type(champion_run_id)
 
             print(f"\nCarregando champion atual (run_id={champion_run_id}) ...")
@@ -466,7 +463,7 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
 
             if delta > 0:
                 # novo modelo supera o champion — registra como @challenger
-                _registrar_alias(melhor_version, "challenger")
+                _registrar_alias(melhor_version, "challenger", model_name)
                 decision = "registered_challenger"
                 human_gate = True
                 next_steps = [
@@ -474,7 +471,7 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
                     f"Ganho em Precision@K(val): +{delta:.4f} ({champ_prec:.4f} → {novo_prec:.4f})",
                     "Para promover o challenger:",
                     "  1. Abra o MLflow Model Registry",
-                    f"  2. Acesse o modelo {MODEL_NAME}",
+                    f"  2. Acesse o modelo {model_name}",
                     "  3. Remova o alias @champion da versão atual",
                     f"  4. Atribua @champion à versão {melhor_version}",
                     "Para ativar A/B test (canary 20%):",
@@ -512,6 +509,7 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
             k_ref_val=k_ref_val,
             k_ref_test=k_ref_test,
             next_steps=next_steps,
+            model_name=model_name,
         )
 
         mlflow.set_tags(
@@ -545,8 +543,9 @@ def avaliar(spark: SparkSession, lr_run_id: str, lgbm_run_id: str, retrain_id: s
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    # substituir pelos run_ids reais antes de executar
-    LR_RUN_ID = "SUBSTITUIR"
-    LGBM_RUN_ID = "SUBSTITUIR"
+    from cli import build_parser
+
+    p = build_parser("Avaliação comparativa e promoção de modelos champion/challenger")
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    avaliar(spark, LR_RUN_ID, LGBM_RUN_ID)
+    avaliar(spark, args, args.lr_run_id, args.lgbm_run_id)

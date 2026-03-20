@@ -10,7 +10,6 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_HOSPITAIS_LEITOS
 from quality.checks import checks_bronze_hospitais_leitos
 from quality.runner import run_checks
 
@@ -82,7 +81,7 @@ def scrape_urls() -> dict:
     return resultado
 
 
-def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
+def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool, landing_path: str) -> str:
     """
     Baixa o arquivo para o Volume de landing e retorna o caminho do CSV local.
     Se is_zip=True: baixa o .zip e extrai o CSV interno para o Volume.
@@ -98,12 +97,12 @@ def baixar_arquivo(url: str, ano: int, fmt: str, is_zip: bool) -> str:
             if not csvs:
                 raise ValueError(f"Nenhum CSV encontrado no zip de {ano}: {zf.namelist()}")
             nome_csv = csvs[0]
-            caminho = f"{LANDING_PATH}/hospitais_leitos_{ano}.csv"
+            caminho = f"{landing_path}/hospitais_leitos_{ano}.csv"
             with zf.open(nome_csv) as src, open(caminho, "wb") as dst:
                 dst.write(src.read())
             print(f"  ✓ CSV extraído: {nome_csv} → {caminho}")
     else:
-        caminho = f"{LANDING_PATH}/hospitais_leitos_{ano}.{fmt}"
+        caminho = f"{landing_path}/hospitais_leitos_{ano}.{fmt}"
         with open(caminho, "wb") as f:
             f.write(r.content)
         print(f"  ✓ Salvo em {caminho}")
@@ -154,17 +153,22 @@ def ler_e_enriquecer(
     return df
 
 
-def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
+def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
     """
     Orquestra montagem de URLs + download + gravação na tabela Bronze.
     apenas_live=True reprocessa só 2025 e 2026 (execução semanal).
     apenas_live=False reprocessa todos os anos (carga inicial ou reprocessamento).
     """
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_hospitais_leitos = args.table_bronze_hospitais_leitos
+    landing_path = args.landing_path
+
     print("Montando URLs da fonte Hospitais e Leitos...")
     urls_disponiveis = scrape_urls()
     print(f"URLs mapeadas: {list(urls_disponiveis.keys())}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_HOSPITAIS_LEITOS} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_bronze_hospitais_leitos} USING DELTA")
 
     for ano, config in ANOS.items():
         if apenas_live and not config["is_live"]:
@@ -180,7 +184,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
 
         status = "live" if config["is_live"] else "congelado"
         print(f"\n── Hospitais e Leitos {ano} ({status}) ──")
-        caminho = baixar_arquivo(url, ano, fmt, config["zip"])
+        caminho = baixar_arquivo(url, ano, fmt, config["zip"], landing_path)
         df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"], config["sep"])
 
         print(f"  Linhas lidas: {df.count():,}")
@@ -189,36 +193,37 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
             spark,
             df,
             checks=checks_bronze_hospitais_leitos(),
-            table_name=TABLE_BRONZE_HOSPITAIS_LEITOS,
-            quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_bronze_hospitais_leitos",
+            table_name=table_bronze_hospitais_leitos,
+            quarantine_table=f"{catalog}.{schema}.quarantine_bronze_hospitais_leitos",
         )
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:
             spark.sql(
-                f"DELETE FROM {TABLE_BRONZE_HOSPITAIS_LEITOS} WHERE CAST(_ano_arquivo AS INT) = {ano}"
+                f"DELETE FROM {table_bronze_hospitais_leitos} WHERE CAST(_ano_arquivo AS INT) = {ano}"
             )
         except Exception as e:
             print(
                 f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
             )
         df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
-            TABLE_BRONZE_HOSPITAIS_LEITOS
+            table_bronze_hospitais_leitos
         )
-        print(f"  ✓ Gravado em {TABLE_BRONZE_HOSPITAIS_LEITOS}")
+        print(f"  ✓ Gravado em {table_bronze_hospitais_leitos}")
 
     print("\n✓ Ingestão Hospitais e Leitos concluída.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Consulta bronze_hospitais_leitos e imprime:
     - contagem de linhas por _ano_arquivo e UF
     - range de COMP (competência) min/max por ano
     Útil para validar a ingestão após execução.
     """
-    print(f"\n── Resumo da tabela {TABLE_BRONZE_HOSPITAIS_LEITOS} ──")
-    df = spark.table(TABLE_BRONZE_HOSPITAIS_LEITOS)
+    table_bronze_hospitais_leitos = args.table_bronze_hospitais_leitos
+    print(f"\n── Resumo da tabela {table_bronze_hospitais_leitos} ──")
+    df = spark.table(table_bronze_hospitais_leitos)
 
     resumo = (
         df.groupBy("_ano_arquivo", "UF")
@@ -235,8 +240,13 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
+    from cli import build_parser
+
+    p = build_parser("Ingestão Bronze — Hospitais e Leitos")
+    p.add_argument(
+        "--live", action="store_true", default=False, help="Reprocessa apenas anos live (2025/2026)"
+    )
+    args, _ = p.parse_known_args()
 
     spark = SparkSession.builder.getOrCreate()
-    apenas_live = "--live" in sys.argv
-    gravar_bronze(spark, apenas_live=apenas_live)
+    gravar_bronze(spark, args, apenas_live=args.live)

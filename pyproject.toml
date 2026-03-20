@@ -51,7 +51,7 @@ packages = [
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/config.py" = "config.py"
+"src/cli.py" = "cli.py"
 
 [tool.hatch.build.targets.editable]
 sources = ["src"]

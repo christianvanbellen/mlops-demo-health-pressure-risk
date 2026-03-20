@@ -39,7 +39,7 @@ for mod in PYSPARK_MOCKS:
 
 # Garante que src/ está no PYTHONPATH
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-# ConfigLoader (src/config.py) tem defaults de desenvolvimento hardcodados —
+# src/cli.py define os defaults de desenvolvimento como valores default do argparse —
 # não é necessário setar variáveis de ambiente para a suíte de testes unitários.
 
 import pandas as pd  # noqa: E402

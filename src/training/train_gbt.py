@@ -16,6 +16,7 @@
 #   Val    : 202501 – 202506        (primeiro semestre 2025, usado no early stopping)
 #   Teste  : 202507+                (segundo semestre 2025 em diante)
 
+import json
 import os
 import tempfile
 
@@ -34,32 +35,16 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-from config import (
-    EARLY_STOPPING,
-    FEATURE_COLS,
-    LGBM_PARAMS,
-    MODEL_NAME,
-    NUM_BOOST_ROUND,
-    TARGET_COL,
-    TEST_START,
-    TRAIN_END,
-    VAL_END,
-)
-from config import (
-    MLFLOW_EXPERIMENT as EXPERIMENT,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_FEATURES as TABLE_FEATURES,
-)
+from cli import FEATURE_COLS, TARGET_COL
 
 
 # ── funções ─────────────────────────────────────────────────────
-def _carregar_dados(spark: SparkSession):
+def _carregar_dados(spark: SparkSession, table_features: str):
     """
     Lê gold_pressure_features, filtra linhas com target válido,
     casteia features para double e remove nulos.
     """
-    df = spark.table(TABLE_FEATURES)
+    df = spark.table(table_features)
     df = df.filter(F.col(TARGET_COL).isNotNull())
     df = df.filter(F.col("leitos_totais") >= 10)
 
@@ -78,18 +63,18 @@ def _carregar_dados(spark: SparkSession):
     return df
 
 
-def _split_temporal(df):
+def _split_temporal(df, train_end: str, val_end: str, test_start: str):
     """
     Divide o dataset por competencia (AAAAMM) — split temporal estrito.
     """
-    train = df.filter(F.col("competencia") <= TRAIN_END)
-    val = df.filter((F.col("competencia") > TRAIN_END) & (F.col("competencia") <= VAL_END))
-    test = df.filter(F.col("competencia") > VAL_END)
+    train = df.filter(F.col("competencia") <= train_end)
+    val = df.filter((F.col("competencia") > train_end) & (F.col("competencia") <= val_end))
+    test = df.filter(F.col("competencia") > val_end)
 
     print("\n── Split temporal ──")
-    print(f"  Treino  (<=  {TRAIN_END}): {train.count():,}")
-    print(f"  Val     ({TRAIN_END[:4]}{int(TRAIN_END[4:]) + 1:02d}–{VAL_END}): {val.count():,}")
-    print(f"  Teste   (>= {TEST_START}): {test.count():,}")
+    print(f"  Treino  (<=  {train_end}): {train.count():,}")
+    print(f"  Val     ({train_end[:4]}{int(train_end[4:]) + 1:02d}–{val_end}): {val.count():,}")
+    print(f"  Teste   (>= {test_start}): {test.count():,}")
     return train, val, test
 
 
@@ -110,20 +95,22 @@ def _para_pandas(train_sp, val_sp, test_sp):
     return X_train, y_train, X_val, y_val, X_test, y_test
 
 
-def _treinar_lgbm(X_train, y_train, X_val, y_val):
+def _treinar_lgbm(
+    X_train, y_train, X_val, y_val, lgbm_params: dict, num_boost_round: int, early_stopping: int
+):
     """Treina o LightGBM com early stopping no conjunto de validação."""
     train_ds = lgb.Dataset(X_train, label=y_train, feature_name=FEATURE_COLS)
     val_ds = lgb.Dataset(X_val, label=y_val, reference=train_ds)
 
     print("\nTreinando LightGBM ...")
     model = lgb.train(
-        params=LGBM_PARAMS,
+        params=lgbm_params,
         train_set=train_ds,
-        num_boost_round=NUM_BOOST_ROUND,
+        num_boost_round=num_boost_round,
         valid_sets=[train_ds, val_ds],
         valid_names=["train", "val"],
         callbacks=[
-            lgb.early_stopping(EARLY_STOPPING),
+            lgb.early_stopping(early_stopping),
             lgb.log_evaluation(50),
         ],
     )
@@ -171,7 +158,9 @@ def _avaliar_lgbm(model, X, y, split_name: str) -> dict:
     }
 
 
-def _log_model_summary(model, X_train, y_train):
+def _log_model_summary(
+    model, X_train, y_train, lgbm_params: dict, num_boost_round: int, early_stopping: int
+):
     """
     Gera model_summary.txt com feature importance (gain), parâmetros e
     estatísticas do treino.
@@ -200,13 +189,13 @@ def _log_model_summary(model, X_train, y_train):
         "",
         "LightGBM Parameters:",
     ]
-    for k, v in LGBM_PARAMS.items():
+    for k, v in lgbm_params.items():
         lines.append(f"  {k:<22}: {v}")
 
     lines += [
         "",
-        f"num_boost_round  : {NUM_BOOST_ROUND}",
-        f"early_stopping   : {EARLY_STOPPING}",
+        f"num_boost_round  : {num_boost_round}",
+        f"early_stopping   : {early_stopping}",
         "",
         f"Training set size: {total:,}",
         f"Positive rate:     {positivos / total * 100:.1f}%",
@@ -293,7 +282,7 @@ def _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test):
     print("  ✓ roc_pr_curves.png logado")
 
 
-def _plot_target_incidence_timeline(df_spark):
+def _plot_target_incidence_timeline(df_spark, train_end: str, val_end: str):
     """
     Incidência do target ao longo das competências com faixas de train/val/test.
     Idêntico ao baseline — recebe df Spark completo.
@@ -311,9 +300,9 @@ def _plot_target_incidence_timeline(df_spark):
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    train_mask = [i for i, c in enumerate(comps) if c <= TRAIN_END]
-    val_mask = [i for i, c in enumerate(comps) if TRAIN_END < c <= VAL_END]
-    test_mask = [i for i, c in enumerate(comps) if c > VAL_END]
+    train_mask = [i for i, c in enumerate(comps) if c <= train_end]
+    val_mask = [i for i, c in enumerate(comps) if train_end < c <= val_end]
+    test_mask = [i for i, c in enumerate(comps) if c > val_end]
 
     for mask, color, label in [
         (train_mask, "steelblue", "Train"),
@@ -468,13 +457,23 @@ def _plot_decile_analysis(model, X, y, split_name: str):
     print(f"  ✓ decile_analysis_{split_name}.png logado")
 
 
-def treinar(spark: SparkSession) -> str:
+def treinar(spark: SparkSession, args) -> str:
     """
     Treina o modelo LightGBM, avalia nos três splits, gera artefatos visuais
     e registra no MLflow e Unity Catalog Model Registry.
     Retorna o run_id do MLflow.
     """
-    mlflow.set_experiment(EXPERIMENT)
+    experiment = args.mlflow_experiment
+    model_name = args.model_name
+    table_features = args.table_gold_features
+    train_end = args.train_end
+    val_end = args.val_end
+    test_start = args.test_start
+    lgbm_params = json.loads(args.lgbm_params_json)
+    num_boost_round = args.num_boost_round
+    early_stopping = args.early_stopping
+
+    mlflow.set_experiment(experiment)
     mlflow.lightgbm.autolog(log_models=False)
     # log_models=False — modelo logado manualmente com registered_model_name
     # para garantir registro no Unity Catalog
@@ -484,23 +483,25 @@ def treinar(spark: SparkSession) -> str:
             {
                 "model_type": "LightGBM",
                 "features": len(FEATURE_COLS),
-                "num_boost_round": NUM_BOOST_ROUND,
-                "early_stopping": EARLY_STOPPING,
-                "train_end": TRAIN_END,
-                "val_end": VAL_END,
-                "test_start": TEST_START,
+                "num_boost_round": num_boost_round,
+                "early_stopping": early_stopping,
+                "train_end": train_end,
+                "val_end": val_end,
+                "test_start": test_start,
                 "target": TARGET_COL,
                 "target_version": "v2",
                 "grain": "municipio_x_competencia",
-                **LGBM_PARAMS,
+                **lgbm_params,
             }
         )
 
-        df_spark = _carregar_dados(spark)
-        train_sp, val_sp, test_sp = _split_temporal(df_spark)
+        df_spark = _carregar_dados(spark, table_features)
+        train_sp, val_sp, test_sp = _split_temporal(df_spark, train_end, val_end, test_start)
         X_train, y_train, X_val, y_val, X_test, y_test = _para_pandas(train_sp, val_sp, test_sp)
 
-        model = _treinar_lgbm(X_train, y_train, X_val, y_val)
+        model = _treinar_lgbm(
+            X_train, y_train, X_val, y_val, lgbm_params, num_boost_round, early_stopping
+        )
         mlflow.log_metric("best_iteration", model.best_iteration)
 
         # ── avaliação nos três splits ──────────────────────────────
@@ -517,9 +518,9 @@ def treinar(spark: SparkSession) -> str:
 
         # ── artefatos visuais ──────────────────────────────────────
         print("\nGerando artefatos visuais ...")
-        _log_model_summary(model, X_train, y_train)
+        _log_model_summary(model, X_train, y_train, lgbm_params, num_boost_round, early_stopping)
         _plot_roc_pr_curves(model, X_train, y_train, X_val, y_val, X_test, y_test)
-        _plot_target_incidence_timeline(df_spark)
+        _plot_target_incidence_timeline(df_spark, train_end, val_end)
         _plot_feature_importance(model)
         for split_name, X, y in [
             ("train", X_train, y_train),
@@ -534,7 +535,7 @@ def treinar(spark: SparkSession) -> str:
             lgb_model=model,
             artifact_path="model",
             signature=signature,
-            registered_model_name=MODEL_NAME,
+            registered_model_name=model_name,
         )
 
         print(f"\n✓ Run ID: {run.info.run_id}")
@@ -546,5 +547,9 @@ def treinar(spark: SparkSession) -> str:
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Treino do modelo principal LightGBM")
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    treinar(spark)
+    treinar(spark, args)

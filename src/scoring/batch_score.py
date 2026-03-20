@@ -21,19 +21,7 @@ from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from config import (
-    AB_CHALLENGER_PCT,
-    FEATURE_COLS,
-    MODEL_NAME,
-    SCORING_MIN_QUALITY,
-    TARGET_COL,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_FEATURES as TABLE_FEATURES,
-)
-from config import (
-    TABLE_GOLD_SCORING as TABLE_SCORING,
-)
+from cli import FEATURE_COLS, TARGET_COL
 
 # ── configuração ────────────────────────────────────────────────
 
@@ -62,14 +50,14 @@ def _get_artifact_path(run_id: str) -> str:
     return f"{run.info.artifact_uri}/model"
 
 
-def _get_model_info(alias: str) -> dict | None:
+def _get_model_info(model_name: str, alias: str) -> dict | None:
     """
     Retorna metadados da versão associada ao alias no registry.
     Retorna None se o alias não existir.
     """
     client = MlflowClient()
     try:
-        mv = client.get_model_version_by_alias(MODEL_NAME, alias)
+        mv = client.get_model_version_by_alias(model_name, alias)
         return {
             "version": mv.version,
             "run_id": mv.run_id,
@@ -95,7 +83,7 @@ def _carregar_modelo(model_info: dict, spark: SparkSession) -> tuple:
 
 
 # ── roteamento A/B ───────────────────────────────────────────────
-def _ab_route(municipio_id: str, challenger_exists: bool) -> str:
+def _ab_route(municipio_id: str, challenger_exists: bool, ab_challenger_pct: float = 0.20) -> str:
     """
     Roteamento determinístico por municipio_id.
     O mesmo município sempre vai para o mesmo modelo durante o período
@@ -105,12 +93,12 @@ def _ab_route(municipio_id: str, challenger_exists: bool) -> str:
     if not challenger_exists:
         return "champion"
     hash_val = int(hashlib.md5(municipio_id.encode()).hexdigest(), 16)
-    if (hash_val % 100) < (AB_CHALLENGER_PCT * 100):
+    if (hash_val % 100) < (ab_challenger_pct * 100):
         return "challenger"
     return "champion"
 
 
-def _ab_route_col(challenger_exists: bool):
+def _ab_route_col(challenger_exists: bool, ab_challenger_pct: float = 0.20):
     """
     Versão Spark de _ab_route — retorna uma expressão de coluna.
     Usa MD5 dos primeiros 8 hex chars convertido para inteiro (base 16→10),
@@ -126,13 +114,15 @@ def _ab_route_col(challenger_exists: bool):
     ).cast("long")
 
     return F.when(
-        (hash_int % 100) < int(AB_CHALLENGER_PCT * 100),
+        (hash_int % 100) < int(ab_challenger_pct * 100),
         F.lit("challenger"),
     ).otherwise(F.lit("champion"))
 
 
 # ── dados e features ─────────────────────────────────────────────
-def _get_competencia_scoring(spark: SparkSession) -> str:
+def _get_competencia_scoring(
+    spark: SparkSession, table_features: str, target_col: str, scoring_min_quality: float
+) -> str:
     """
     Retorna a competência mais recente adequada para scoring
     seguindo a política de confiança de dados:
@@ -140,7 +130,7 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
       1. target null (mês sem t+1 ainda)
       2. capacity_is_forward_fill = False (capacity real)
       3. srag_consolidation_flag != 'recente' (SRAG suficientemente consolidado)
-      4. data_quality_score >= SCORING_MIN_QUALITY
+      4. data_quality_score >= scoring_min_quality
 
     Política de scoring:
       consolidado   (>= 90 dias): score confiável
@@ -149,11 +139,11 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
 
     Loga as competências disponíveis e o motivo da escolha.
     """
-    df = spark.table(TABLE_FEATURES)
+    df = spark.table(table_features)
 
     # todas as competências candidatas ao scoring
     candidatas = (
-        df.filter(F.col(TARGET_COL).isNull())
+        df.filter(F.col(target_col).isNull())
         .groupBy("competencia")
         .agg(
             F.first("capacity_is_forward_fill").alias("forward_fill"),
@@ -171,7 +161,7 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
     elegivel = (
         candidatas.filter(~F.col("forward_fill"))
         .filter(F.col("consolidation") != "recente")
-        .filter(F.col("quality_score") >= SCORING_MIN_QUALITY)
+        .filter(F.col("quality_score") >= scoring_min_quality)
         .agg(F.max("competencia").alias("max_comp"))
         .collect()[0]["max_comp"]
     )
@@ -187,13 +177,15 @@ def _get_competencia_scoring(spark: SparkSession) -> str:
     return elegivel
 
 
-def _preparar_features(spark: SparkSession, competencia: str) -> DataFrame:
+def _preparar_features(
+    spark: SparkSession, competencia: str, table_features: str, target_col: str
+) -> DataFrame:
     """
     Lê features da competência alvo, casteando para double.
     Mantém colunas de contexto além das features do modelo.
     """
-    df = spark.table(TABLE_FEATURES)
-    df = df.filter((F.col("competencia") == competencia) & F.col(TARGET_COL).isNull())
+    df = spark.table(table_features)
+    df = df.filter((F.col("competencia") == competencia) & F.col(target_col).isNull())
 
     for col in FEATURE_COLS:
         df = df.withColumn(col, F.col(col).cast("double"))
@@ -256,7 +248,7 @@ def _aplicar_score_spark(model, df_spark: DataFrame, model_info: dict) -> DataFr
 def _classificar_risco(df: DataFrame) -> DataFrame:
     """
     Classifica municípios em alto/moderado/baixo com base nos
-    percentis 85 e 70 do risk_score desta competência.
+    percentis 85 e 70 do risk_score desta competência (v2).
 
     Garante que ~15% dos municípios ficam em alto risco e ~15%
     em moderado — ranking estável e comparável entre competências.
@@ -284,7 +276,7 @@ def _classificar_risco(df: DataFrame) -> DataFrame:
 
 
 # ── função principal ─────────────────────────────────────────────
-def score(spark: SparkSession, ab_test: bool = False) -> str:
+def score(spark: SparkSession, args, ab_test: bool = False) -> str:
     """
     Aplica o modelo @champion (e @challenger se ab_test=True) sobre a
     competência mais recente disponível para scoring.
@@ -294,13 +286,19 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
       False → usa só @champion (modo normal)
       True  → ativa roteamento 20/80 se @challenger existir
     """
+    model_name = args.model_name
+    table_features = args.table_gold_features
+    table_scoring = args.table_gold_scoring
+    scoring_min_quality = args.scoring_min_quality
+    ab_challenger_pct = args.ab_challenger_pct
+
     print("\n── Batch Score ──")
     print(f"  Modo A/B: {ab_test}")
     print(f"  Timestamp: {datetime.now()}")
 
     # ── aliases disponíveis ────────────────────────────────────────
-    champion_info = _get_model_info("champion")
-    challenger_info = _get_model_info("challenger") if ab_test else None
+    champion_info = _get_model_info(model_name, "champion")
+    challenger_info = _get_model_info(model_name, "challenger") if ab_test else None
 
     if champion_info is None:
         raise ValueError(
@@ -315,8 +313,8 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
         print("  Challenger: não existe (modo normal)")
 
     # ── competência e features ─────────────────────────────────────
-    competencia = _get_competencia_scoring(spark)
-    df_features = _preparar_features(spark, competencia)
+    competencia = _get_competencia_scoring(spark, table_features, TARGET_COL, scoring_min_quality)
+    df_features = _preparar_features(spark, competencia, table_features, TARGET_COL)
     n_municipios = df_features.count()
     print(f"  Municípios a scorar: {n_municipios:,}")
 
@@ -324,7 +322,7 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     challenger_exists = challenger_info is not None
     df_features = df_features.withColumn(
         "modelo_destinado",
-        _ab_route_col(challenger_exists),
+        _ab_route_col(challenger_exists, ab_challenger_pct),
     )
 
     df_champion = df_features.filter(F.col("modelo_destinado") == "champion")
@@ -403,16 +401,16 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
     df_output = df_scored.select(colunas_output)
 
     # ── grava (append — histórico de scores) ──────────────────────
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SCORING} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_scoring} USING DELTA")
     (
         df_output.write.format("delta")
         .mode("append")
         .option("mergeSchema", "true")
-        .saveAsTable(TABLE_SCORING)
+        .saveAsTable(table_scoring)
     )
 
     n_scored = df_output.count()
-    print(f"\n✓ Score gravado em {TABLE_SCORING}")
+    print(f"\n✓ Score gravado em {table_scoring}")
     print(f"  Competência: {competencia}")
     print(f"  Municípios scored: {n_scored:,}")
 
@@ -438,8 +436,13 @@ def score(spark: SparkSession, ab_test: bool = False) -> str:
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
+    from cli import build_parser
+
+    p = build_parser("Batch scoring semanal de risco de pressão assistencial")
+    p.add_argument(
+        "--ab", action="store_true", default=False, help="Ativa modo A/B canary (20% challenger)"
+    )
+    args, _ = p.parse_known_args()
 
     spark = SparkSession.builder.getOrCreate()
-    ab_test = "--ab" in sys.argv
-    score(spark, ab_test=ab_test)
+    score(spark, args, ab_test=args.ab)

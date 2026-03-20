@@ -68,14 +68,6 @@
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
-from config import (
-    CATALOG,
-    SCHEMA,
-    TABLE_GOLD_FEATURES,
-    TABLE_SILVER_CAPACITY,
-    TABLE_SILVER_SRAG,
-    TARGET_PERCENTILE,
-)
 from quality.checks import checks_gold_features
 from quality.runner import run_checks
 
@@ -407,7 +399,7 @@ def _adicionar_consolidation_flag(df):
     return df
 
 
-def _calcular_target(df):
+def _calcular_target(df, target_percentile: float):
     """
     Target v2: casos_por_leito do mês seguinte >= percentil 85 nacional daquele mês.
     Último mês de cada município → target null (mantido para scoring ao vivo).
@@ -450,7 +442,7 @@ def _calcular_target(df):
     # passo 4: percentil 85 nacional de casos_por_leito_next por competencia
     # (linhas com casos_por_leito_next null são ignoradas pelo percentile_approx)
     p85 = df.groupBy("competencia").agg(
-        F.percentile_approx("casos_por_leito_next", TARGET_PERCENTILE).alias("_p85_nacional"),
+        F.percentile_approx("casos_por_leito_next", target_percentile).alias("_p85_nacional"),
     )
 
     # passo 5: join do p85 de volta ao df principal
@@ -470,7 +462,7 @@ def _calcular_target(df):
         # passo 7: colunas de governança
         .withColumn("target_definition_version", F.lit("v2"))
         .withColumn("target_metric", F.lit("casos_por_leito"))
-        .withColumn("target_percentile", F.lit(TARGET_PERCENTILE))
+        .withColumn("target_percentile", F.lit(target_percentile))
         .drop("casos_por_leito_next", "_p85_nacional")
     )
     return df
@@ -520,23 +512,30 @@ def _validar_e_filtrar(df):
     return df
 
 
-def _adicionar_metadados(df):
+def _adicionar_metadados(df, table_silver_srag: str, table_silver_capacity: str):
     """Adiciona colunas de rastreabilidade do processamento."""
     return (
         df.withColumn("_processed_at", F.current_timestamp())
-        .withColumn("_source_srag", F.lit(TABLE_SILVER_SRAG))
-        .withColumn("_source_cap", F.lit(TABLE_SILVER_CAPACITY))
+        .withColumn("_source_srag", F.lit(table_silver_srag))
+        .withColumn("_source_cap", F.lit(table_silver_capacity))
     )
 
 
-def transformar(spark: SparkSession):
+def transformar(spark: SparkSession, args):
     """
     Executa o pipeline completo Silver → Gold de features de pressão assistencial v2.
     Grava via Delta nativo (drop + recria para garantir schema limpo).
     """
+    catalog = args.catalog
+    schema = args.schema
+    table_gold_features = args.table_gold_features
+    table_silver_srag = args.table_silver_srag
+    table_silver_capacity = args.table_silver_capacity
+    target_percentile = args.target_percentile
+
     print("Lendo fontes silver ...")
-    srag = spark.table(TABLE_SILVER_SRAG)
-    cap = spark.table(TABLE_SILVER_CAPACITY)
+    srag = spark.table(table_silver_srag)
+    cap = spark.table(table_silver_capacity)
     print(f"  srag: {srag.count():,} linhas | cap: {cap.count():,} linhas")
 
     df = _agregar_srag_mensal(srag)
@@ -546,41 +545,41 @@ def transformar(spark: SparkSession):
     df = _features_dinamica(df)
     df = _features_sazonais(df)
     df = _adicionar_consolidation_flag(df)
-    df = _calcular_target(df)
+    df = _calcular_target(df, target_percentile)
     df = _validar_e_filtrar(df)
-    df = _adicionar_metadados(df)
+    df = _adicionar_metadados(df, table_silver_srag, table_silver_capacity)
 
     # Drop + recria para garantir schema limpo a cada execução
-    if spark.catalog.tableExists(TABLE_GOLD_FEATURES):
-        spark.sql(f"DROP TABLE IF EXISTS {TABLE_GOLD_FEATURES}")
+    if spark.catalog.tableExists(table_gold_features):
+        spark.sql(f"DROP TABLE IF EXISTS {table_gold_features}")
         print("  Tabela anterior removida")
 
     df = run_checks(
         spark,
         df,
         checks=checks_gold_features(),
-        table_name=TABLE_GOLD_FEATURES,
-        quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_gold_features",
+        table_name=table_gold_features,
+        quarantine_table=f"{catalog}.{schema}.quarantine_gold_features",
     )
 
-    print(f"\nCriando feature table {TABLE_GOLD_FEATURES} ...")
+    print(f"\nCriando feature table {table_gold_features} ...")
     (
         df.write.format("delta")
         .mode("overwrite")
         .option("overwriteSchema", "true")
-        .saveAsTable(TABLE_GOLD_FEATURES)
+        .saveAsTable(table_gold_features)
     )
     spark.sql(
-        f"COMMENT ON TABLE {TABLE_GOLD_FEATURES} IS "
+        f"COMMENT ON TABLE {table_gold_features} IS "
         f"'Feature store de pressão assistencial respiratória — v2. "
         f"Grain: municipio_id x competencia (AAAAMM). "
         f"Target: casos_por_leito do mês seguinte >= percentil 85 nacional. "
         f"target_definition_version=v2.'"
     )
-    print(f"✓ Feature table {TABLE_GOLD_FEATURES} criada.")
+    print(f"✓ Feature table {table_gold_features} criada.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Imprime estatísticas básicas da gold para validação pós-execução:
     - totais gerais
@@ -588,7 +587,8 @@ def show_summary(spark: SparkSession):
     - estatísticas de casos_por_leito
     - correlação das features com o target
     """
-    df = spark.table(TABLE_GOLD_FEATURES)
+    table_gold_features = args.table_gold_features
+    df = spark.table(table_gold_features)
 
     print(f"Total de linhas: {df.count():,}")
     print(f"Municípios distintos:   {df.select('municipio_id').distinct().count():,}")
@@ -641,5 +641,10 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Transform Silver → Gold — Feature store de pressão assistencial v2")
+    args, _ = p.parse_known_args()
+
     spark = SparkSession.builder.getOrCreate()
-    transformar(spark)
+    transformar(spark, args)
