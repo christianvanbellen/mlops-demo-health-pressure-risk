@@ -18,8 +18,6 @@ from datetime import datetime
 import mlflow
 from mlflow.tracking import MlflowClient
 
-from config import MLFLOW_EXPERIMENT, MODEL_NAME
-
 # ── métricas exibidas nas comparações ────────────────────────────
 _METRICAS_COMPARACAO = [
     ("val_precision_at_k", "Prec@K val"),
@@ -38,16 +36,16 @@ def _client() -> MlflowClient:
     return MlflowClient()
 
 
-def _alias_de_versao(client: MlflowClient, versao: str) -> list[str]:
+def _alias_de_versao(client: MlflowClient, versao: str, model_name: str) -> list[str]:
     """Retorna todos os aliases atribuídos a uma versão."""
-    mv = client.get_model_version(MODEL_NAME, versao)
+    mv = client.get_model_version(model_name, versao)
     return list(mv.aliases) if mv.aliases else []
 
 
-def _versao_do_alias(client: MlflowClient, alias: str) -> str | None:
+def _versao_do_alias(client: MlflowClient, alias: str, model_name: str) -> str | None:
     """Retorna o número de versão associado ao alias, ou None."""
     try:
-        mv = client.get_model_version_by_alias(MODEL_NAME, alias)
+        mv = client.get_model_version_by_alias(model_name, alias)
         return mv.version
     except Exception:
         return None
@@ -74,7 +72,7 @@ def _sep(largura: int = 72) -> str:
 
 
 # ── funções principais ────────────────────────────────────────────
-def listar_versoes() -> None:
+def listar_versoes(model_name: str) -> None:
     """
     Lista todas as versões do modelo no registry com seus aliases,
     métricas principais e data de criação.
@@ -82,19 +80,19 @@ def listar_versoes() -> None:
     client = _client()
 
     try:
-        versoes = client.search_model_versions(f"name='{MODEL_NAME}'")
+        versoes = client.search_model_versions(f"name='{model_name}'")
     except Exception as e:
         print(f"  ⚠ Erro ao listar versões: {e}")
         return
 
     if not versoes:
-        print(f"  Nenhuma versão registrada para {MODEL_NAME}.")
+        print(f"  Nenhuma versão registrada para {model_name}.")
         return
 
     versoes = sorted(versoes, key=lambda v: int(v.version), reverse=True)
 
     print(f"\n{_sep()}")
-    print(f"  Modelo: {MODEL_NAME}")
+    print(f"  Modelo: {model_name}")
     print(f"  Total de versões: {len(versoes)}")
     print(_sep())
 
@@ -114,8 +112,8 @@ def listar_versoes() -> None:
 
         # infere tipo do modelo a partir dos parâmetros do run
         try:
-            run = client.get_run(mv.run_id)
-            model_type = run.data.params.get("model_type", "—")
+            run_obj = client.get_run(mv.run_id)
+            model_type = run_obj.data.params.get("model_type", "—")
         except Exception:
             model_type = "—"
 
@@ -129,7 +127,7 @@ def listar_versoes() -> None:
     print(_sep())
 
 
-def promover(versao: str, alias: str) -> None:
+def promover(versao: str, alias: str, model_name: str, mlflow_experiment: str) -> None:
     """
     Atribui um alias a uma versão do modelo.
     Registra a promoção como run MLflow para rastreabilidade.
@@ -138,23 +136,23 @@ def promover(versao: str, alias: str) -> None:
 
     # valida que a versão existe
     try:
-        mv = client.get_model_version(MODEL_NAME, versao)
+        mv = client.get_model_version(model_name, versao)
     except Exception as e:
         print(f"  ⚠ Versão {versao} não encontrada: {e}")
         return
 
     # versão anterior do alias (para log)
-    versao_anterior = _versao_do_alias(client, alias)
+    versao_anterior = _versao_do_alias(client, alias, model_name)
 
     # atribui o novo alias
     client.set_registered_model_alias(
-        name=MODEL_NAME,
+        name=model_name,
         alias=alias,
         version=versao,
     )
 
     # loga a promoção no MLflow para rastreabilidade
-    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    mlflow.set_experiment(mlflow_experiment)
     with mlflow.start_run(run_name=f"promote_{alias}_v{versao}"):
         mlflow.set_tags(
             {
@@ -162,7 +160,7 @@ def promover(versao: str, alias: str) -> None:
                 "alias": alias,
                 "versao_nova": versao,
                 "versao_anterior": versao_anterior or "nenhuma",
-                "model_name": MODEL_NAME,
+                "model_name": model_name,
                 "operador": os.environ.get("USER", os.environ.get("USERNAME", "desconhecido")),
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
@@ -179,7 +177,7 @@ def promover(versao: str, alias: str) -> None:
     print(_sep())
 
 
-def arquivar(versao: str) -> None:
+def arquivar(versao: str, model_name: str) -> None:
     """
     Remove todos os aliases de uma versão e adiciona tag status=archived.
     Não deleta a versão do registry.
@@ -188,7 +186,7 @@ def arquivar(versao: str) -> None:
 
     # valida que a versão existe
     try:
-        mv = client.get_model_version(MODEL_NAME, versao)
+        mv = client.get_model_version(model_name, versao)
     except Exception as e:
         print(f"  ⚠ Versão {versao} não encontrada: {e}")
         return
@@ -198,15 +196,15 @@ def arquivar(versao: str) -> None:
     # remove todos os aliases
     for alias in aliases_removidos:
         try:
-            client.delete_registered_model_alias(MODEL_NAME, alias)
+            client.delete_registered_model_alias(model_name, alias)
             print(f"  Alias @{alias} removido de v{versao}")
         except Exception as e:
             print(f"  ⚠ Falha ao remover @{alias}: {e}")
 
     # adiciona tag de arquivamento
-    client.set_model_version_tag(MODEL_NAME, versao, "status", "archived")
+    client.set_model_version_tag(model_name, versao, "status", "archived")
     client.set_model_version_tag(
-        MODEL_NAME, versao, "archived_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        model_name, versao, "archived_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
     print(f"\n{_sep()}")
@@ -219,7 +217,7 @@ def arquivar(versao: str) -> None:
     print(_sep())
 
 
-def comparar(versao_a: str, versao_b: str) -> None:
+def comparar(versao_a: str, versao_b: str, model_name: str) -> None:
     """
     Compara métricas de duas versões lado a lado com delta.
     """
@@ -227,8 +225,8 @@ def comparar(versao_a: str, versao_b: str) -> None:
 
     # carrega as duas versões
     try:
-        mv_a = client.get_model_version(MODEL_NAME, versao_a)
-        mv_b = client.get_model_version(MODEL_NAME, versao_b)
+        mv_a = client.get_model_version(model_name, versao_a)
+        mv_b = client.get_model_version(model_name, versao_b)
     except Exception as e:
         print(f"  ⚠ Erro ao carregar versões: {e}")
         return
@@ -240,7 +238,7 @@ def comparar(versao_a: str, versao_b: str) -> None:
     aliases_b = ", ".join(f"@{a}" for a in mv_b.aliases) if mv_b.aliases else "—"
 
     print(f"\n{_sep()}")
-    print(f"  Comparação de versões — {MODEL_NAME}")
+    print(f"  Comparação de versões — {model_name}")
     print(_sep())
     print(f"  {'Métrica':<22} {'v' + versao_a:>12} {'v' + versao_b:>12} {'Delta':>10}  Melhor")
     print(_sep())
@@ -272,14 +270,14 @@ def comparar(versao_a: str, versao_b: str) -> None:
     print(_sep())
 
 
-def status() -> None:
+def status(model_name: str) -> None:
     """
     Mostra o estado atual do registry: aliases ativos e últimas versões.
     """
     client = _client()
 
     print(f"\n{_sep()}")
-    print(f"  Model Registry — {MODEL_NAME}")
+    print(f"  Model Registry — {model_name}")
     print(f"  Consultado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(_sep())
 
@@ -287,10 +285,10 @@ def status() -> None:
     print("  Aliases ativos:")
     algum_alias = False
     for alias in _ALIASES_ATIVOS:
-        versao = _versao_do_alias(client, alias)
+        versao = _versao_do_alias(client, alias, model_name)
         if versao:
             algum_alias = True
-            mv = client.get_model_version(MODEL_NAME, versao)
+            mv = client.get_model_version(model_name, versao)
             metricas = _metricas_do_run(client, mv.run_id)
             prec_k = metricas.get("val_precision_at_k")
             prec_str = f"Prec@K={prec_k:.4f}" if prec_k is not None else ""
@@ -303,7 +301,7 @@ def status() -> None:
     # últimas 3 versões
     print("\n  Últimas 3 versões registradas:")
     try:
-        versoes = client.search_model_versions(f"name='{MODEL_NAME}'")
+        versoes = client.search_model_versions(f"name='{model_name}'")
         versoes = sorted(versoes, key=lambda v: int(v.version), reverse=True)[:3]
         for mv in versoes:
             aliases = ", ".join(f"@{a}" for a in mv.aliases) if mv.aliases else "sem alias"
@@ -322,6 +320,18 @@ def status() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Utilitário de Model Registry — Radar de Pressão Assistencial"
+    )
+    parser.add_argument(
+        "--mlflow_experiment",
+        type=str,
+        default="/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr",
+        help="Caminho do experimento MLflow",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier",
+        help="Nome do modelo no Unity Catalog Model Registry",
     )
     subparsers = parser.add_subparsers(dest="comando")
 
@@ -342,14 +352,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.comando == "listar":
-        listar_versoes()
+        listar_versoes(args.model_name)
     elif args.comando == "status":
-        status()
+        status(args.model_name)
     elif args.comando == "promover":
-        promover(args.versao, args.alias)
+        promover(args.versao, args.alias, args.model_name, args.mlflow_experiment)
     elif args.comando == "arquivar":
-        arquivar(args.versao)
+        arquivar(args.versao, args.model_name)
     elif args.comando == "comparar":
-        comparar(args.versao_a, args.versao_b)
+        comparar(args.versao_a, args.versao_b, args.model_name)
     else:
         parser.print_help()

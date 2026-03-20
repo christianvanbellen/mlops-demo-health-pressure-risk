@@ -29,7 +29,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import CATALOG, SCHEMA, TABLE_BRONZE_SRAG, TABLE_SILVER_SRAG
 from quality.checks import checks_silver_srag
 from quality.runner import run_checks
 
@@ -202,12 +201,17 @@ def _adicionar_metadados(df):
     )
 
 
-def transformar(spark: SparkSession):
+def transformar(spark: SparkSession, args):
     """
     Executa o pipeline completo Bronze → Silver de casos SRAG por município × semana.
     """
-    print(f"Lendo {TABLE_BRONZE_SRAG} ...")
-    df = spark.table(TABLE_BRONZE_SRAG)
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_srag = args.table_bronze_srag
+    table_silver_srag = args.table_silver_srag
+
+    print(f"Lendo {table_bronze_srag} ...")
+    df = spark.table(table_bronze_srag)
 
     df = _filtrar_hospitalizados(df)
     df = _filtrar_sem_pri_valido(df)
@@ -221,30 +225,31 @@ def transformar(spark: SparkSession):
         spark,
         df,
         checks=checks_silver_srag(),
-        table_name=TABLE_SILVER_SRAG,
-        quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_silver_srag",
+        table_name=table_silver_srag,
+        quarantine_table=f"{catalog}.{schema}.quarantine_silver_srag",
     )
 
-    print(f"\nGravando em {TABLE_SILVER_SRAG} ...")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SILVER_SRAG} USING DELTA")
+    print(f"\nGravando em {table_silver_srag} ...")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_silver_srag} USING DELTA")
     (
         df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
-        .saveAsTable(TABLE_SILVER_SRAG)
+        .saveAsTable(table_silver_srag)
     )
-    print(f"✓ {TABLE_SILVER_SRAG} atualizada.")
+    print(f"✓ {table_silver_srag} atualizada.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Imprime estatísticas básicas da silver para validação pós-execução:
     - total de linhas, municípios e semanas distintos
     - casos por ano (primeiros 4 caracteres de semana_epidemiologica)
     - top 5 municípios por total de casos
     """
-    print(f"\n── Resumo da tabela {TABLE_SILVER_SRAG} ──")
-    df = spark.table(TABLE_SILVER_SRAG)
+    table_silver_srag = args.table_silver_srag
+    print(f"\n── Resumo da tabela {table_silver_srag} ──")
+    df = spark.table(table_silver_srag)
 
     print(f"  Total de linhas: {df.count():,}")
     print(f"  Municípios distintos: {df.select('municipio_id').distinct().count():,}")
@@ -274,5 +279,10 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Transform Bronze → Silver — SRAG por município × semana")
+    args, _ = p.parse_known_args()
+
     spark = SparkSession.builder.getOrCreate()
-    transformar(spark)
+    transformar(spark, args)
