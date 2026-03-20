@@ -21,7 +21,6 @@ PYSPARK_MOCKS = [
     "pyspark.ml.evaluation",
     "pyspark.ml.pipeline",
     "pyspark.ml.functions",
-    "databricks.feature_engineering",
     "mlflow.spark",
     # DQX — não disponível fora do cluster Databricks
     "databricks.labs.dqx",
