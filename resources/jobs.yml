@@ -15,6 +15,9 @@ resources:
             node_type_id: "i3.xlarge"
             num_workers: 1
             policy_id: "00069DFD463E0DBC"
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
             custom_tags:
@@ -29,34 +32,6 @@ resources:
       email_notifications:
         on_failure:
           - christian.bellen@indicium.tech
-
-      environment_variables:
-        CATALOG: ${var.catalog}
-        SCHEMA: ${var.schema}
-        TABLE_BRONZE_SRAG: ${var.table_bronze_srag}
-        TABLE_BRONZE_HOSPITAIS_LEITOS: ${var.table_bronze_hospitais_leitos}
-        TABLE_BRONZE_CNES: ${var.table_bronze_cnes}
-        TABLE_SILVER_SRAG: ${var.table_silver_srag}
-        TABLE_SILVER_CAPACITY: ${var.table_silver_capacity}
-        TABLE_GOLD_FEATURES: ${var.table_gold_features}
-        TABLE_GOLD_SCORING: ${var.table_gold_scoring}
-        TABLE_GOLD_MONITOR: ${var.table_gold_monitor}
-        LANDING_PATH: ${var.landing_path}
-        MLFLOW_EXPERIMENT: ${var.mlflow_experiment}
-        MODEL_NAME: ${var.model_name}
-        RETRAIN_JOB_NAME: ${var.retrain_job_name}
-        TRAIN_END: ${var.train_end}
-        VAL_END: ${var.val_end}
-        TEST_START: ${var.test_start}
-        TARGET_PERCENTILE: ${var.target_percentile}
-        PRECISION_K_THRESHOLD: ${var.precision_k_threshold}
-        MIN_CONSECUTIVE_BELOW: ${var.min_consecutive_below}
-        SCORING_MIN_QUALITY: ${var.scoring_min_quality}
-        AB_CHALLENGER_PCT: ${var.ab_challenger_pct}
-        DRIFT_SEASONAL_FEATURES: ${var.drift_seasonal_features}
-        LGBM_PARAMS_JSON: ${var.lgbm_params_json}
-        NUM_BOOST_ROUND: ${var.num_boost_round}
-        EARLY_STOPPING: ${var.early_stopping}
 
       tasks:
 
@@ -189,6 +164,9 @@ resources:
             node_type_id: "i3.xlarge"
             num_workers: 1
             policy_id: "00069DFD463E0DBC"
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
             custom_tags:
@@ -203,34 +181,6 @@ resources:
           - christian.bellen@indicium.tech
         on_failure:
           - christian.bellen@indicium.tech
-
-      environment_variables:
-        CATALOG: ${var.catalog}
-        SCHEMA: ${var.schema}
-        TABLE_BRONZE_SRAG: ${var.table_bronze_srag}
-        TABLE_BRONZE_HOSPITAIS_LEITOS: ${var.table_bronze_hospitais_leitos}
-        TABLE_BRONZE_CNES: ${var.table_bronze_cnes}
-        TABLE_SILVER_SRAG: ${var.table_silver_srag}
-        TABLE_SILVER_CAPACITY: ${var.table_silver_capacity}
-        TABLE_GOLD_FEATURES: ${var.table_gold_features}
-        TABLE_GOLD_SCORING: ${var.table_gold_scoring}
-        TABLE_GOLD_MONITOR: ${var.table_gold_monitor}
-        LANDING_PATH: ${var.landing_path}
-        MLFLOW_EXPERIMENT: ${var.mlflow_experiment}
-        MODEL_NAME: ${var.model_name}
-        RETRAIN_JOB_NAME: ${var.retrain_job_name}
-        TRAIN_END: ${var.train_end}
-        VAL_END: ${var.val_end}
-        TEST_START: ${var.test_start}
-        TARGET_PERCENTILE: ${var.target_percentile}
-        PRECISION_K_THRESHOLD: ${var.precision_k_threshold}
-        MIN_CONSECUTIVE_BELOW: ${var.min_consecutive_below}
-        SCORING_MIN_QUALITY: ${var.scoring_min_quality}
-        AB_CHALLENGER_PCT: ${var.ab_challenger_pct}
-        DRIFT_SEASONAL_FEATURES: ${var.drift_seasonal_features}
-        LGBM_PARAMS_JSON: ${var.lgbm_params_json}
-        NUM_BOOST_ROUND: ${var.num_boost_round}
-        EARLY_STOPPING: ${var.early_stopping}
 
       # parâmetros recebidos do retrain_trigger
       parameters:
