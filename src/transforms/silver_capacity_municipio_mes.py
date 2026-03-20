@@ -27,7 +27,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import CATALOG, SCHEMA, TABLE_BRONZE_HOSPITAIS_LEITOS, TABLE_SILVER_CAPACITY
 from quality.checks import checks_silver_capacity
 from quality.runner import run_checks
 
@@ -183,12 +182,17 @@ def _adicionar_metadados(df):
     )
 
 
-def transformar(spark: SparkSession):
+def transformar(spark: SparkSession, args):
     """
     Executa o pipeline completo Bronze → Silver de capacidade hospitalar.
     """
-    print(f"Lendo {TABLE_BRONZE_HOSPITAIS_LEITOS} ...")
-    df = spark.table(TABLE_BRONZE_HOSPITAIS_LEITOS)
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_hospitais_leitos = args.table_bronze_hospitais_leitos
+    table_silver_capacity = args.table_silver_capacity
+
+    print(f"Lendo {table_bronze_hospitais_leitos} ...")
+    df = spark.table(table_bronze_hospitais_leitos)
     print(f"  Registros na bronze: {df.count():,}")
 
     df = _resolver_municipio_id(df)
@@ -202,29 +206,30 @@ def transformar(spark: SparkSession):
         spark,
         df,
         checks=checks_silver_capacity(),
-        table_name=TABLE_SILVER_CAPACITY,
-        quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_silver_capacity",
+        table_name=table_silver_capacity,
+        quarantine_table=f"{catalog}.{schema}.quarantine_silver_capacity",
     )
 
-    print(f"\nGravando em {TABLE_SILVER_CAPACITY} ...")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_SILVER_CAPACITY} USING DELTA")
+    print(f"\nGravando em {table_silver_capacity} ...")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_silver_capacity} USING DELTA")
     (
         df.write.format("delta")
         .mode("overwrite")
         .option("mergeSchema", "true")
-        .saveAsTable(TABLE_SILVER_CAPACITY)
+        .saveAsTable(table_silver_capacity)
     )
-    print(f"✓ {TABLE_SILVER_CAPACITY} atualizada.")
+    print(f"✓ {table_silver_capacity} atualizada.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Imprime estatísticas básicas da silver para validação pós-execução:
     - contagem de linhas por competencia
     - totais nacionais de leitos e UTI
     """
-    print(f"\n── Resumo da tabela {TABLE_SILVER_CAPACITY} ──")
-    df = spark.table(TABLE_SILVER_CAPACITY)
+    table_silver_capacity = args.table_silver_capacity
+    print(f"\n── Resumo da tabela {table_silver_capacity} ──")
+    df = spark.table(table_silver_capacity)
 
     print(f"  Total de linhas: {df.count():,}")
     print(f"  Municípios distintos: {df.select('municipio_id').distinct().count():,}")
@@ -245,5 +250,10 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Transform Bronze → Silver — Capacidade hospitalar por município × mês")
+    args, _ = p.parse_known_args()
+
     spark = SparkSession.builder.getOrCreate()
-    transformar(spark)
+    transformar(spark, args)

@@ -19,26 +19,16 @@ import requests
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
-from config import (
-    MIN_CONSECUTIVE_BELOW,
-    MLFLOW_EXPERIMENT,
-    PRECISION_K_THRESHOLD,
-    RETRAIN_JOB_NAME,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_MONITOR as TABLE_MONITOR,
-)
-
 
 # ── carregamento do histórico ────────────────────────────────────
-def _carregar_historico_monitor(spark: SparkSession) -> pd.DataFrame:
+def _carregar_historico_monitor(spark: SparkSession, table_monitor: str) -> pd.DataFrame:
     """
     Lê monitoring_performance e retorna o histórico ordenado
     por competencia desc, só com colunas relevantes para o trigger.
     Filtra duplicatas: se o monitor rodou múltiplas vezes para a
     mesma competência, pega o registro mais recente (max monitor_date).
     """
-    df = spark.table(TABLE_MONITOR)
+    df = spark.table(table_monitor)
 
     # deduplicar por competencia — pega o monitor mais recente
     w = Window.partitionBy("competencia").orderBy(F.col("monitor_date").desc())
@@ -60,13 +50,17 @@ def _carregar_historico_monitor(spark: SparkSession) -> pd.DataFrame:
 
 
 # ── avaliação do trigger ─────────────────────────────────────────
-def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
+def _avaliar_trigger(
+    df_historico: pd.DataFrame,
+    precision_k_threshold: float,
+    min_consecutive_below: int,
+) -> dict:
     """
     Avalia se o trigger de retraining deve ser acionado.
 
     Regras:
     1. DEGRADAÇÃO CONFIRMADA (trigger principal):
-       Precision@K < threshold por MIN_CONSECUTIVE_BELOW (2) competências
+       Precision@K < threshold por min_consecutive_below (2) competências
        consecutivas mais recentes — exclui competências simuladas se
        houver dados reais disponíveis.
 
@@ -84,11 +78,11 @@ def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
     """
     df = df_historico.sort_values("competencia").copy()
 
-    if len(df) < MIN_CONSECUTIVE_BELOW:
+    if len(df) < min_consecutive_below:
         return {
             "trigger": False,
             "reason": (
-                f"Histórico insuficiente — {len(df)} competências, mínimo {MIN_CONSECUTIVE_BELOW}"
+                f"Histórico insuficiente — {len(df)} competências, mínimo {min_consecutive_below}"
             ),
             "precision_at_k_recente": None,
             "n_consecutivas_abaixo": 0,
@@ -98,7 +92,7 @@ def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
     # conta competências consecutivas abaixo do threshold
     # começando da mais recente
     ultimas = df.tail(10)  # avalia janela das últimas 10
-    abaixo_threshold = (ultimas["precision_at_k"] < PRECISION_K_THRESHOLD).values[::-1]
+    abaixo_threshold = (ultimas["precision_at_k"] < precision_k_threshold).values[::-1]
 
     n_consecutivas = 0
     for v in abaixo_threshold:
@@ -111,11 +105,11 @@ def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
     comp_recente = df["competencia"].iloc[-1]
 
     # regra 1 — degradação confirmada
-    if n_consecutivas >= MIN_CONSECUTIVE_BELOW:
+    if n_consecutivas >= min_consecutive_below:
         return {
             "trigger": True,
             "reason": (
-                f"Degradação confirmada: Precision@K abaixo de {PRECISION_K_THRESHOLD} "
+                f"Degradação confirmada: Precision@K abaixo de {precision_k_threshold} "
                 f"por {n_consecutivas} competências consecutivas "
                 f"(última: {comp_recente} = {prec_recente:.4f})"
             ),
@@ -124,8 +118,8 @@ def _avaliar_trigger(df_historico: pd.DataFrame) -> dict:
             "competencias_avaliadas": df["competencia"].tail(5).tolist(),
             "detalhes": {
                 "trigger_type": "degradacao_confirmada",
-                "threshold": PRECISION_K_THRESHOLD,
-                "min_consecutivas": MIN_CONSECUTIVE_BELOW,
+                "threshold": precision_k_threshold,
+                "min_consecutivas": min_consecutive_below,
             },
         }
 
@@ -258,7 +252,7 @@ def _disparar_job(job_id: str, motivo: str) -> dict:
 
 
 # ── função principal ─────────────────────────────────────────────
-def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
+def verificar_e_disparar(spark: SparkSession, args, dry_run: bool = False) -> dict:
     """
     Função principal do trigger.
 
@@ -273,12 +267,18 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
       4. Loga decisão no MLflow
       5. Retorna resultado com status e rastreabilidade
     """
+    mlflow_experiment = args.mlflow_experiment
+    precision_k_threshold = args.precision_k_threshold
+    min_consecutive_below = args.min_consecutive_below
+    retrain_job_name = args.retrain_job_name
+    table_monitor = args.table_gold_monitor
+
     print("\n── Retrain Trigger ──")
     print(f"  Data:    {date.today()}")
     print(f"  Dry run: {dry_run}")
 
     # 1. carrega histórico
-    df_historico = _carregar_historico_monitor(spark)
+    df_historico = _carregar_historico_monitor(spark, table_monitor)
     print(f"  Competências no histórico: {len(df_historico)}")
 
     if df_historico.empty:
@@ -286,7 +286,7 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
         return {"status": "sem_historico", "trigger": False}
 
     # 2. avalia regra
-    avaliacao = _avaliar_trigger(df_historico)
+    avaliacao = _avaliar_trigger(df_historico, precision_k_threshold, min_consecutive_below)
 
     print("\n── Avaliação ──")
     print(f"  Trigger:           {avaliacao['trigger']}")
@@ -300,19 +300,19 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
     if avaliacao["trigger"]:
         if dry_run:
             print("\n  [DRY RUN] Trigger acionado — Job NÃO disparado")
-            print(f"  Job que seria disparado: {RETRAIN_JOB_NAME}")
-            job_result = {"status": "dry_run", "job_name": RETRAIN_JOB_NAME}
+            print(f"  Job que seria disparado: {retrain_job_name}")
+            job_result = {"status": "dry_run", "job_name": retrain_job_name}
         else:
-            print(f"\n  Buscando Job '{RETRAIN_JOB_NAME}' ...")
-            job_id = _get_job_id(RETRAIN_JOB_NAME)
+            print(f"\n  Buscando Job '{retrain_job_name}' ...")
+            job_id = _get_job_id(retrain_job_name)
 
             if job_id is None:
-                print(f"  ⚠ Job '{RETRAIN_JOB_NAME}' não encontrado no workspace")
+                print(f"  ⚠ Job '{retrain_job_name}' não encontrado no workspace")
                 print("  → Trigger registrado mas Job não disparado")
                 print(
                     "  → Crie o Job no Databricks com esse nome para habilitar o disparo automático"
                 )
-                job_result = {"status": "job_nao_encontrado", "job_name": RETRAIN_JOB_NAME}
+                job_result = {"status": "job_nao_encontrado", "job_name": retrain_job_name}
             else:
                 print(f"  Job encontrado (id={job_id}) — disparando ...")
                 job_result = _disparar_job(job_id, avaliacao["reason"])
@@ -321,15 +321,15 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
         print("\n  ✓ Sem trigger — retraining não necessário")
 
     # 4. loga decisão no MLflow
-    mlflow.set_experiment(experiment_name=MLFLOW_EXPERIMENT)
+    mlflow.set_experiment(experiment_name=mlflow_experiment)
 
     with mlflow.start_run(run_name=f"retrain_trigger_{date.today()}") as run:
         mlflow.log_params(
             {
-                "threshold": PRECISION_K_THRESHOLD,
-                "min_consecutivas": MIN_CONSECUTIVE_BELOW,
+                "threshold": precision_k_threshold,
+                "min_consecutivas": min_consecutive_below,
                 "dry_run": dry_run,
-                "job_name": RETRAIN_JOB_NAME,
+                "job_name": retrain_job_name,
             }
         )
         mlflow.log_metrics(
@@ -363,10 +363,17 @@ def verificar_e_disparar(spark: SparkSession, dry_run: bool = False) -> dict:
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
+    from cli import build_parser
 
+    p = build_parser("Trigger de retraining baseado em degradação de performance")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Avalia o trigger sem disparar o Job",
+    )
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    dry_run = "--dry-run" in sys.argv
-    resultado = verificar_e_disparar(spark, dry_run=dry_run)
+    resultado = verificar_e_disparar(spark, args, dry_run=args.dry_run)
     print(f"\nTrigger: {resultado['trigger']}")
     print(f"Motivo:  {resultado['reason']}")

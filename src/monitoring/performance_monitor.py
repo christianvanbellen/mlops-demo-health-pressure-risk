@@ -22,22 +22,7 @@ from mlflow.tracking import MlflowClient
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from config import (
-    FEATURE_COLS,
-    MLFLOW_EXPERIMENT,
-    MODEL_NAME,
-    PRECISION_K_THRESHOLD,
-    TARGET_COL,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_FEATURES as TABLE_FEATURES,
-)
-from config import (
-    TABLE_GOLD_MONITOR as TABLE_MONITOR,
-)
-from config import (
-    TABLE_GOLD_SCORING as TABLE_SCORING,
-)
+from cli import FEATURE_COLS, TARGET_COL
 
 # ── configuração ────────────────────────────────────────────────
 # critérios de qualidade para target válido no monitor
@@ -45,7 +30,12 @@ VALID_CONSOLIDATION = ["consolidado", "estabilizando"]
 
 
 # ── simulação histórica ──────────────────────────────────────────
-def _simular_scores_historicos(spark: SparkSession) -> DataFrame:
+def _simular_scores_historicos(
+    spark: SparkSession,
+    model_name: str,
+    table_features: str,
+    table_scoring: str,
+) -> DataFrame:
     """
     Para competências onde não existe score gravado em gold_pressure_scoring
     mas existe target válido no Gold, simula o que o @champion teria previsto.
@@ -60,10 +50,10 @@ def _simular_scores_historicos(spark: SparkSession) -> DataFrame:
          coluna simulated=True.
     """
     # competências já scored
-    scored_comps = spark.table(TABLE_SCORING).select("competencia").distinct()
+    scored_comps = spark.table(table_scoring).select("competencia").distinct()
 
     # competências com target válido ainda não scored
-    gold = spark.table(TABLE_FEATURES)
+    gold = spark.table(table_features)
     para_simular = (
         gold.filter(F.col(TARGET_COL).isNotNull())
         .filter(F.col("srag_consolidation_flag").isin(VALID_CONSOLIDATION))
@@ -88,7 +78,7 @@ def _simular_scores_historicos(spark: SparkSession) -> DataFrame:
 
     # carrega champion
     client = MlflowClient()
-    mv = client.get_model_version_by_alias(MODEL_NAME, "champion")
+    mv = client.get_model_version_by_alias(model_name, "champion")
     champion_run_id = mv.run_id
     champion_version = mv.version
 
@@ -144,7 +134,12 @@ def _simular_scores_historicos(spark: SparkSession) -> DataFrame:
 
 
 # ── métricas por competência ─────────────────────────────────────
-def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
+def _calcular_metricas_por_competencia(
+    spark: SparkSession,
+    model_name: str,
+    table_features: str,
+    table_scoring: str,
+) -> pd.DataFrame:
     """
     Para cada competência T onde existe score (real ou simulado) E target de T+1:
       - join score(T) com target(T+1) por municipio_id
@@ -153,11 +148,11 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
     """
     from sklearn.metrics import average_precision_score, roc_auc_score
 
-    gold = spark.table(TABLE_FEATURES)
-    scored = spark.table(TABLE_SCORING).withColumn("simulated", F.lit(False))
+    gold = spark.table(table_features)
+    scored = spark.table(table_scoring).withColumn("simulated", F.lit(False))
 
     # inclui scores simulados para competências históricas
-    simulados = _simular_scores_historicos(spark)
+    simulados = _simular_scores_historicos(spark, model_name, table_features, table_scoring)
     if simulados.count() > 0:
         scored = scored.unionByName(simulados, allowMissingColumns=True)
 
@@ -261,6 +256,7 @@ def _calcular_metricas_por_competencia(spark: SparkSession) -> pd.DataFrame:
 # ── artefatos ────────────────────────────────────────────────────
 def _plot_performance_timeline(
     df_metricas: pd.DataFrame,
+    precision_k_threshold: float,
     versao_champion: str = "?",
 ):
     """
@@ -289,7 +285,7 @@ def _plot_performance_timeline(
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
     # ── subplot 1 — Precision@K ────────────────────────────────────
-    thr1 = PRECISION_K_THRESHOLD
+    thr1 = precision_k_threshold
 
     # faixas de fundo ok / alerta
     ax1.axhspan(thr1, 1.0, color="green", alpha=0.08, label="Zona ok")
@@ -420,7 +416,7 @@ def _plot_performance_timeline(
     fig.suptitle(
         f"Monitor de Performance — @champion v{versao_champion}\n"
         f"Avaliado em {date.today()}  |  {n} competências  |  "
-        f"Threshold Precision@K={PRECISION_K_THRESHOLD}",
+        f"Threshold Precision@K={precision_k_threshold}",
         fontsize=12,
         fontweight="bold",
         y=1.01,
@@ -438,22 +434,30 @@ def _plot_performance_timeline(
 
 
 # ── função principal ─────────────────────────────────────────────
-def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
+def monitorar(spark: SparkSession, args) -> dict:
     """
     Calcula métricas de performance por competência, detecta degradação
     e grava resultados em monitoring_performance.
 
     Retorna dict com status, trigger_retraining e métricas recentes.
     """
-    experiment_path = experiment_path or MLFLOW_EXPERIMENT
-    mlflow.set_experiment(experiment_name=experiment_path)
+    mlflow_experiment = args.mlflow_experiment
+    model_name = args.model_name
+    precision_k_threshold = args.precision_k_threshold
+    table_features = args.table_gold_features
+    table_scoring = args.table_gold_scoring
+    table_monitor = args.table_gold_monitor
+
+    mlflow.set_experiment(experiment_name=mlflow_experiment)
 
     with mlflow.start_run(run_name=f"performance_monitor_{date.today()}") as run:
         print("\n── Performance Monitor ──")
         print(f"  Data: {date.today()}")
-        print(f"  Threshold Precision@K: {PRECISION_K_THRESHOLD}")
+        print(f"  Threshold Precision@K: {precision_k_threshold}")
 
-        df_metricas = _calcular_metricas_por_competencia(spark)
+        df_metricas = _calcular_metricas_por_competencia(
+            spark, model_name, table_features, table_scoring
+        )
 
         if df_metricas.empty:
             print("  ⚠ Nenhuma competência avaliável ainda.")
@@ -482,16 +486,16 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
 
         print(f"\n  Precision@K médio: {prec_recente:.4f}")
         print(f"  AUC-PR médio:      {auc_recente:.4f}")
-        print(f"  Threshold:         {PRECISION_K_THRESHOLD}")
+        print(f"  Threshold:         {precision_k_threshold}")
 
         # decisão de trigger
-        trigger = prec_recente < PRECISION_K_THRESHOLD
+        trigger = prec_recente < precision_k_threshold
         status = "alerta_retraining" if trigger else "ok"
 
         print(f"\n  Status: {status}")
         if trigger:
             print(
-                f"  ⚠ Precision@K ({prec_recente:.4f}) abaixo do threshold ({PRECISION_K_THRESHOLD})"
+                f"  ⚠ Precision@K ({prec_recente:.4f}) abaixo do threshold ({precision_k_threshold})"
             )
             print("  → Retraining recomendado")
         else:
@@ -510,19 +514,23 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
 
         # artefatos
         client_mv = MlflowClient()
-        champion_version = client_mv.get_model_version_by_alias(MODEL_NAME, "champion").version
-        _plot_performance_timeline(df_metricas, versao_champion=champion_version)
+        champion_version = client_mv.get_model_version_by_alias(model_name, "champion").version
+        _plot_performance_timeline(
+            df_metricas,
+            precision_k_threshold=precision_k_threshold,
+            versao_champion=champion_version,
+        )
 
-        # grava resultado no TABLE_MONITOR (append)
+        # grava resultado no table_monitor (append)
         df_spark = spark.createDataFrame(df_metricas)
-        spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_MONITOR} USING DELTA")
+        spark.sql(f"CREATE TABLE IF NOT EXISTS {table_monitor} USING DELTA")
         (
             df_spark.write.format("delta")
             .mode("append")
             .option("mergeSchema", "true")
-            .saveAsTable(TABLE_MONITOR)
+            .saveAsTable(table_monitor)
         )
-        print(f"  ✓ Resultados gravados em {TABLE_MONITOR}")
+        print(f"  ✓ Resultados gravados em {table_monitor}")
 
         resultado = {
             "status": status,
@@ -538,6 +546,10 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Monitor de performance do modelo de risco de pressão assistencial")
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    resultado = monitorar(spark)
+    resultado = monitorar(spark, args)
     print(f"\nTrigger retraining: {resultado['trigger_retraining']}")

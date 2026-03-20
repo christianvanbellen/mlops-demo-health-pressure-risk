@@ -999,21 +999,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "databricks-labs-dqx" },
-    { name = "databricks-sdk" },
     { name = "evidently" },
-    { name = "lightgbm" },
-    { name = "matplotlib" },
-    { name = "mlflow" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "scikit-learn" },
 ]
 
 [package.optional-dependencies]
 dev = [
     { name = "ipykernel" },
+    { name = "lightgbm" },
+    { name = "mlflow" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -1022,22 +1015,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "databricks-labs-dqx", specifier = ">=0.5.0" },
-    { name = "databricks-sdk", specifier = ">=0.28.0" },
+    { name = "databricks-labs-dqx", specifier = ">=0.13.0,<0.14.0" },
     { name = "evidently", specifier = ">=0.7.0" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.0" },
-    { name = "lightgbm", specifier = ">=4.5.0" },
-    { name = "matplotlib", specifier = ">=3.8.0" },
-    { name = "mlflow", specifier = ">=2.14.0" },
+    { name = "lightgbm", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "mlflow", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
-    { name = "numpy", specifier = ">=1.26.0" },
-    { name = "pandas", specifier = ">=2.2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
-    { name = "scikit-learn", specifier = ">=1.4.0" },
 ]
 provides-extras = ["dev"]
 

@@ -85,11 +85,7 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_CNES
-
 # ── configuração ────────────────────────────────────────────────
-TABLE_LEITO = f"{CATALOG}.{SCHEMA}.bronze_cnes_leitos"
-
 FTP_HOST = "ftp.datasus.gov.br"
 FTP_DIR = "/cnes/"
 PAGINA_FONTE = "https://cnes.datasus.gov.br/pages/downloads/arquivosBaseDados.jsp"
@@ -186,7 +182,7 @@ def scrape_urls() -> dict:
         return COMPETENCIAS_FALLBACK
 
 
-def baixar_e_extrair(competencia: str) -> tuple:
+def baixar_e_extrair(competencia: str, landing_path: str) -> tuple:
     """
     Baixa BASE_DE_DADOS_CNES_{competencia}.ZIP do FTP para o Volume de landing,
     extrai tbEstabelecimento{competencia}.csv e tbLeito{competencia}.csv,
@@ -196,7 +192,7 @@ def baixar_e_extrair(competencia: str) -> tuple:
     Retorna (caminho_estab, caminho_leito, url_usada).
     """
     nome_zip = _nome_zip(competencia)
-    caminho_zip = f"{LANDING_PATH}/cnes_{competencia}.zip"
+    caminho_zip = f"{landing_path}/cnes_{competencia}.zip"
     url_ftp = f"ftp://{FTP_HOST}{FTP_DIR}{nome_zip}"
 
     # tentativa 1: ftplib (mais confiável em ambientes sem proxy HTTP)
@@ -221,8 +217,8 @@ def baixar_e_extrair(competencia: str) -> tuple:
     # extração dos dois CSVs relevantes
     nome_estab = f"tbEstabelecimento{competencia}.csv"
     nome_leito = f"tbLeito{competencia}.csv"
-    caminho_estab = f"{LANDING_PATH}/cnes_estab_{competencia}.csv"
-    caminho_leito = f"{LANDING_PATH}/cnes_leito_{competencia}.csv"
+    caminho_estab = f"{landing_path}/cnes_estab_{competencia}.csv"
+    caminho_leito = f"{landing_path}/cnes_leito_{competencia}.csv"
 
     with zipfile.ZipFile(caminho_zip) as zf:
         arquivos_zip = zf.namelist()
@@ -329,7 +325,7 @@ def ler_e_enriquecer_leito(
     return _adicionar_metadados(df, ano, competencia, is_live, url)
 
 
-def inspecionar_colunas(spark: SparkSession, competencia: str):
+def inspecionar_colunas(spark: SparkSession, competencia: str, landing_path: str):
     """
     Baixa o ZIP da competência informada, extrai os dois CSVs relevantes,
     imprime o schema completo e as primeiras 5 linhas de cada um.
@@ -337,7 +333,7 @@ def inspecionar_colunas(spark: SparkSession, competencia: str):
     NÃO grava nada no Bronze.
     """
     print(f"\n── Inspecionando colunas para competência {competencia} ──")
-    caminho_estab, caminho_leito, _ = baixar_e_extrair(competencia)
+    caminho_estab, caminho_leito, _ = baixar_e_extrair(competencia, landing_path)
 
     try:
         for label, caminho in [("tbEstabelecimento", caminho_estab), ("tbLeito", caminho_leito)]:
@@ -370,18 +366,26 @@ def _gravar_tabela(spark: SparkSession, df, table: str, ano: int):
     print(f"  ✓ Gravado em {table}")
 
 
-def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
+def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
     """
     Orquestra listagem de competências + download + extração + gravação nas tabelas Bronze.
     apenas_live=True reprocessa só anos marcados como is_live (execução semanal).
     apenas_live=False reprocessa todos os anos (carga inicial ou reprocessamento completo).
     """
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_cnes = args.table_bronze_cnes
+    landing_path = args.landing_path
+
+    # tabela de leitos derivada do catalog/schema
+    table_leito = f"{catalog}.{schema}.bronze_cnes_leitos"
+
     print("Buscando competências disponíveis no FTP do DATASUS...")
     competencias_disponiveis = scrape_urls()
     print(f"Competências mapeadas: {competencias_disponiveis}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_CNES} USING DELTA")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_LEITO} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_bronze_cnes} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_leito} USING DELTA")
 
     for ano, config in ANOS.items():
         if apenas_live and not config["is_live"]:
@@ -396,7 +400,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
         status = "live" if config["is_live"] else "congelado"
         print(f"\n── CNES {ano} (competência {competencia}, {status}) ──")
 
-        caminho_estab, caminho_leito, url = baixar_e_extrair(competencia)
+        caminho_estab, caminho_leito, url = baixar_e_extrair(competencia, landing_path)
 
         try:
             # ── tbEstabelecimento ──
@@ -404,14 +408,14 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
                 spark, caminho_estab, ano, url, config["is_live"], competencia
             )
             print(f"  Estabelecimentos lidos: {df_estab.count():,}")
-            _gravar_tabela(spark, df_estab, TABLE_BRONZE_CNES, ano)
+            _gravar_tabela(spark, df_estab, table_bronze_cnes, ano)
 
             # ── tbLeito ──
             df_leito = ler_e_enriquecer_leito(
                 spark, caminho_leito, ano, url, config["is_live"], competencia
             )
             print(f"  Leitos lidos: {df_leito.count():,}")
-            _gravar_tabela(spark, df_leito, TABLE_LEITO, ano)
+            _gravar_tabela(spark, df_leito, table_leito, ano)
 
         finally:
             # limpa CSVs extraídos independentemente de erro — economiza espaço no landing
@@ -425,12 +429,17 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
     print("\n✓ Ingestão CNES concluída.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Consulta as duas tabelas Bronze e imprime contagens por ano/uf.
     Útil para validar a ingestão após execução.
     """
-    for table, group_col in [(TABLE_BRONZE_CNES, "uf"), (TABLE_LEITO, "cnes_id")]:
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_cnes = args.table_bronze_cnes
+    table_leito = f"{catalog}.{schema}.bronze_cnes_leitos"
+
+    for table, group_col in [(table_bronze_cnes, "uf"), (table_leito, "cnes_id")]:
         print(f"\n── Resumo da tabela {table} ──")
         df = spark.table(table)
         resumo = (
@@ -447,8 +456,13 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
+    from cli import build_parser
+
+    p = build_parser("Ingestão Bronze — CNES Estabelecimentos e Leitos")
+    p.add_argument(
+        "--live", action="store_true", default=False, help="Reprocessa apenas anos live (2025/2026)"
+    )
+    args, _ = p.parse_known_args()
 
     spark = SparkSession.builder.getOrCreate()
-    apenas_live = "--live" in sys.argv
-    gravar_bronze(spark, apenas_live=apenas_live)
+    gravar_bronze(spark, args, apenas_live=args.live)

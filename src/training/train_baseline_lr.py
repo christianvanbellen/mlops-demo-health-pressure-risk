@@ -35,29 +35,16 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import precision_recall_curve, roc_curve
 
-from config import (
-    FEATURE_COLS,
-    MODEL_NAME,
-    TARGET_COL,
-    TEST_START,
-    TRAIN_END,
-    VAL_END,
-)
-from config import (
-    MLFLOW_EXPERIMENT as EXPERIMENT,
-)
-from config import (  # noqa: E402
-    TABLE_GOLD_FEATURES as TABLE_FEATURES,
-)
+from cli import FEATURE_COLS, TARGET_COL
 
 
 # ── funções ─────────────────────────────────────────────────────
-def _carregar_dados(spark: SparkSession):
+def _carregar_dados(spark: SparkSession, table_features: str):
     """
     Lê gold_pressure_features, filtra linhas com target válido,
     casteia features para double e remove nulos.
     """
-    df = spark.table(TABLE_FEATURES)
+    df = spark.table(table_features)
 
     # apenas linhas com target definido (exclui último mês, usado para scoring)
     df = df.filter(F.col(TARGET_COL).isNotNull())
@@ -83,19 +70,19 @@ def _carregar_dados(spark: SparkSession):
     return df
 
 
-def _split_temporal(df):
+def _split_temporal(df, train_end: str, val_end: str, test_start: str):
     """
     Divide o dataset por competencia (AAAAMM) — split temporal estrito.
     Não há vazamento de informação futura no treino.
     """
-    train = df.filter(F.col("competencia") <= TRAIN_END)
-    val = df.filter((F.col("competencia") > TRAIN_END) & (F.col("competencia") <= VAL_END))
-    test = df.filter(F.col("competencia") > VAL_END)
+    train = df.filter(F.col("competencia") <= train_end)
+    val = df.filter((F.col("competencia") > train_end) & (F.col("competencia") <= val_end))
+    test = df.filter(F.col("competencia") > val_end)
 
     print("\n── Split temporal ──")
-    print(f"  Treino  (<=  {TRAIN_END}): {train.count():,}")
-    print(f"  Val     ({TRAIN_END[:4]}{int(TRAIN_END[4:]) + 1:02d}–{VAL_END}): {val.count():,}")
-    print(f"  Teste   (>= {TEST_START}): {test.count():,}")
+    print(f"  Treino  (<=  {train_end}): {train.count():,}")
+    print(f"  Val     ({train_end[:4]}{int(train_end[4:]) + 1:02d}–{val_end}): {val.count():,}")
+    print(f"  Teste   (>= {test_start}): {test.count():,}")
     return train, val, test
 
 
@@ -270,7 +257,7 @@ def _plot_roc_pr_curves(model, train, val, test):
     print("  ✓ roc_pr_curves.png logado")
 
 
-def _plot_target_incidence_timeline(df):
+def _plot_target_incidence_timeline(df, train_end: str, val_end: str):
     """
     Incidência do target ao longo das competências com faixas de train/val/test.
     """
@@ -290,9 +277,9 @@ def _plot_target_incidence_timeline(df):
     fig, ax = plt.subplots(figsize=(10, 5))
 
     # faixas de fundo
-    train_mask = [i for i, c in enumerate(comps) if c <= TRAIN_END]
-    val_mask = [i for i, c in enumerate(comps) if TRAIN_END < c <= VAL_END]
-    test_mask = [i for i, c in enumerate(comps) if c > VAL_END]
+    train_mask = [i for i, c in enumerate(comps) if c <= train_end]
+    val_mask = [i for i, c in enumerate(comps) if train_end < c <= val_end]
+    test_mask = [i for i, c in enumerate(comps) if c > val_end]
 
     for mask, color, label in [
         (train_mask, "steelblue", "Train"),
@@ -431,22 +418,29 @@ def _plot_decile_analysis(model, df, split_name: str):
     print(f"  ✓ decile_analysis_{split_name}.png logado")
 
 
-def treinar(spark: SparkSession) -> str:
+def treinar(spark: SparkSession, args) -> str:
     """
     Treina o modelo baseline de Logistic Regression, avalia nos três splits
     e registra o modelo no MLflow e no Unity Catalog Model Registry.
     Retorna o run_id do MLflow.
     """
-    mlflow.set_experiment(experiment_name=EXPERIMENT)
+    experiment = args.mlflow_experiment
+    model_name = args.model_name
+    table_features = args.table_gold_features
+    train_end = args.train_end
+    val_end = args.val_end
+    test_start = args.test_start
+
+    mlflow.set_experiment(experiment_name=experiment)
 
     with mlflow.start_run(run_name="baseline_logistic_regression") as run:
         mlflow.log_params(
             {
                 "model_type": "LogisticRegression",
                 "features": len(FEATURE_COLS),
-                "train_end": TRAIN_END,
-                "val_end": VAL_END,
-                "test_start": TEST_START,
+                "train_end": train_end,
+                "val_end": val_end,
+                "test_start": test_start,
                 "regParam": 0.01,
                 "elasticNetParam": 0.0,
                 "maxIter": 100,
@@ -456,8 +450,8 @@ def treinar(spark: SparkSession) -> str:
             }
         )
 
-        df = _carregar_dados(spark)
-        train, val, test = _split_temporal(df)
+        df = _carregar_dados(spark, table_features)
+        train, val, test = _split_temporal(df, train_end, val_end, test_start)
 
         # ── pipeline ──────────────────────────────────────────────
         assembler = VectorAssembler(
@@ -495,7 +489,7 @@ def treinar(spark: SparkSession) -> str:
         print("\nGerando artefatos visuais ...")
         _log_model_summary(model, train)
         _plot_roc_pr_curves(model, train, val, test)
-        _plot_target_incidence_timeline(df)
+        _plot_target_incidence_timeline(df, train_end, val_end)
         for split_name, split_df in [("train", train), ("val", val), ("test", test)]:
             _plot_decile_analysis(model, split_df, split_name)
 
@@ -508,15 +502,19 @@ def treinar(spark: SparkSession) -> str:
             spark_model=model,
             artifact_path="model",
             signature=signature,
-            registered_model_name=MODEL_NAME,
+            registered_model_name=model_name,
         )
 
         print(f"\n✓ Run ID: {run.info.run_id}")
-        print(f"  Modelo registrado como: {MODEL_NAME}")
+        print(f"  Modelo registrado como: {model_name}")
         return run.info.run_id
 
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
+    from cli import build_parser
+
+    p = build_parser("Treino do modelo baseline Logistic Regression")
+    args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    treinar(spark)
+    treinar(spark, args)

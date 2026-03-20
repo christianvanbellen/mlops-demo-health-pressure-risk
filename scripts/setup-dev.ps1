@@ -1,46 +1,53 @@
 # scripts/setup-dev.ps1
-# Sobrescreve as variáveis de ambiente de configuração para desenvolvimento local.
-# Uso: . .\scripts\setup-dev.ps1  (dot-source para exportar para o shell corrente)
+# Exemplo de como sobrescrever os defaults do cli.py via argumentos de linha de comando
+# em desenvolvimento local.
 #
-# Só é necessário quando você quiser sobrescrever os defaults do ConfigLoader
-# (src/config.py). Em desenvolvimento normal os defaults já refletem o ambiente dev.
+# Os scripts src/ agora recebem configuração via argparse (src/cli.py).
+# Os defaults já refletem o ambiente de desenvolvimento — não é necessário
+# setar variáveis de ambiente para usar os scripts normalmente.
+#
+# Use este arquivo como referência dos argumentos disponíveis, ou copie
+# os argumentos abaixo para a linha de comando ao executar um script.
 #
 # Equivalente bash: scripts/setup-dev.sh
 
-$env:CATALOG = "ds_dev_db"
-$env:SCHEMA  = "dev_christian_van_bellen"
+# Exemplo: executar o scoring com configuração explícita (PowerShell)
+# python src/scoring/batch_score.py `
+#   --catalog ds_dev_db `
+#   --schema dev_christian_van_bellen `
+#   --table_gold_features ds_dev_db.dev_christian_van_bellen.gold_pressure_features `
+#   --table_gold_scoring ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring `
+#   --model_name ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier `
+#   --mlflow_experiment "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr" `
+#   --scoring_min_quality 0.5 `
+#   --ab_challenger_pct 0.20
 
-$env:TABLE_BRONZE_SRAG             = "ds_dev_db.dev_christian_van_bellen.bronze_srag"
-$env:TABLE_BRONZE_HOSPITAIS_LEITOS = "ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos"
-$env:TABLE_BRONZE_CNES             = "ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos"
+# Defaults de referência (mesmos valores usados em src/cli.py):
+# --catalog                  ds_dev_db
+# --schema                   dev_christian_van_bellen
+# --table_bronze_srag        ds_dev_db.dev_christian_van_bellen.bronze_srag
+# --table_bronze_hospitais_leitos  ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
+# --table_bronze_cnes        ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos
+# --table_silver_srag        ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
+# --table_silver_capacity    ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
+# --table_gold_features      ds_dev_db.dev_christian_van_bellen.gold_pressure_features
+# --table_gold_scoring       ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
+# --table_gold_monitor       ds_dev_db.dev_christian_van_bellen.monitoring_performance
+# --landing_path             /Volumes/ds_dev_db/dev_christian_van_bellen/landing
+# --mlflow_experiment        /Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr
+# --model_name               ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier
+# --retrain_job_name         job_health_pressure_retrain
+# --train_end                202412
+# --val_end                  202506
+# --test_start               202507
+# --target_percentile        0.85
+# --precision_k_threshold    0.55
+# --min_consecutive_below    2
+# --scoring_min_quality      0.5
+# --ab_challenger_pct        0.20
+# --drift_seasonal_features  mes,quarter,is_semester1,is_rainy_season
+# --lgbm_params_json         '{"objective":"binary","metric":"binary_logloss",...}'
+# --num_boost_round          500
+# --early_stopping           50
 
-$env:TABLE_SILVER_SRAG     = "ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana"
-$env:TABLE_SILVER_CAPACITY = "ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes"
-
-$env:TABLE_GOLD_FEATURES = "ds_dev_db.dev_christian_van_bellen.gold_pressure_features"
-$env:TABLE_GOLD_SCORING  = "ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring"
-$env:TABLE_GOLD_MONITOR  = "ds_dev_db.dev_christian_van_bellen.monitoring_performance"
-
-$env:LANDING_PATH = "/Volumes/ds_dev_db/dev_christian_van_bellen/landing"
-
-$env:MLFLOW_EXPERIMENT = "/Users/christian.bellen@indicium.tech/pressure-risk-baseline-lr"
-
-$env:MODEL_NAME       = "ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier"
-$env:RETRAIN_JOB_NAME = "job_health_pressure_retrain"
-
-$env:TRAIN_END  = "202412"
-$env:VAL_END    = "202506"
-$env:TEST_START = "202507"
-
-$env:TARGET_PERCENTILE      = "0.85"
-$env:PRECISION_K_THRESHOLD  = "0.55"
-$env:MIN_CONSECUTIVE_BELOW  = "2"
-$env:SCORING_MIN_QUALITY    = "0.5"
-$env:AB_CHALLENGER_PCT      = "0.20"
-$env:DRIFT_SEASONAL_FEATURES = "mes,quarter,is_semester1,is_rainy_season"
-
-$env:LGBM_PARAMS_JSON = '{"objective":"binary","metric":"binary_logloss","boosting_type":"gbdt","num_leaves":63,"learning_rate":0.05,"feature_fraction":0.8,"bagging_fraction":0.8,"bagging_freq":5,"min_child_samples":20,"reg_alpha":0.1,"reg_lambda":0.1,"verbose":-1}'
-$env:NUM_BOOST_ROUND  = "500"
-$env:EARLY_STOPPING   = "50"
-
-Write-Host "Variaveis de ambiente de desenvolvimento configuradas."
+Write-Host "Referência de argumentos CLI disponível — ver src/cli.py para lista completa."

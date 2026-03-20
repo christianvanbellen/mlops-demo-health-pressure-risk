@@ -9,7 +9,6 @@ import requests
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from config import CATALOG, LANDING_PATH, SCHEMA, TABLE_BRONZE_SRAG
 from quality.checks import checks_bronze_srag
 from quality.runner import run_checks
 
@@ -96,9 +95,9 @@ def scrape_urls() -> dict:
         return URLS_FALLBACK
 
 
-def baixar_arquivo(url: str, ano: int, fmt: str) -> str:
-    """Baixa o arquivo para /tmp e retorna o caminho local."""
-    caminho = f"{LANDING_PATH}/srag_{ano}.{fmt}"
+def baixar_arquivo(url: str, ano: int, fmt: str, landing_path: str) -> str:
+    """Baixa o arquivo para o Volume de landing e retorna o caminho local."""
+    caminho = f"{landing_path}/srag_{ano}.{fmt}"
     print(f"  Baixando {ano} ({fmt}) de {url} ...")
     r = requests.get(url, timeout=300)
     r.raise_for_status()
@@ -154,17 +153,22 @@ def ler_e_enriquecer(spark: SparkSession, caminho: str, ano: int, url: str, is_l
     return df
 
 
-def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
+def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
     """
     Orquestra scraping de URLs + download + gravação na tabela Bronze.
     apenas_live=True reprocessa só 2025 e 2026 (execução semanal).
     apenas_live=False reprocessa todos os anos (carga inicial).
     """
+    catalog = args.catalog
+    schema = args.schema
+    table_bronze_srag = args.table_bronze_srag
+    landing_path = args.landing_path
+
     print("Buscando URLs atuais na página do OpenDataSUS...")
     urls_disponiveis = scrape_urls()
     print(f"URLs encontradas: {list(urls_disponiveis.keys())}")
 
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {TABLE_BRONZE_SRAG} USING DELTA")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {table_bronze_srag} USING DELTA")
 
     for ano, config in ANOS.items():
         if apenas_live and not config["is_live"]:
@@ -179,7 +183,7 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
             continue
 
         print(f"\n── SRAG {ano} ({'live' if config['is_live'] else 'congelado'}) ──")
-        caminho = baixar_arquivo(url, ano, fmt)
+        caminho = baixar_arquivo(url, ano, fmt, landing_path)
         df = ler_e_enriquecer(spark, caminho, ano, url, config["is_live"])
 
         print(f"  Linhas lidas: {df.count():,}")
@@ -188,34 +192,35 @@ def gravar_bronze(spark: SparkSession, apenas_live: bool = False):
             spark,
             df,
             checks=checks_bronze_srag(),
-            table_name=TABLE_BRONZE_SRAG,
-            quarantine_table=f"{CATALOG}.{SCHEMA}.quarantine_bronze_srag",
+            table_name=table_bronze_srag,
+            quarantine_table=f"{catalog}.{schema}.quarantine_bronze_srag",
         )
 
         # remove partição do ano antes de reescrever (permite reprocessamento seguro)
         try:
-            spark.sql(f"DELETE FROM {TABLE_BRONZE_SRAG} WHERE CAST(_ano_arquivo AS INT) = {ano}")
+            spark.sql(f"DELETE FROM {table_bronze_srag} WHERE CAST(_ano_arquivo AS INT) = {ano}")
         except Exception as e:
             print(
                 f"  ⚠ DELETE ignorado ({type(e).__name__}: {e}) — tabela vazia ou predicado sem resultado."
             )
         df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
-            TABLE_BRONZE_SRAG
+            table_bronze_srag
         )
-        print(f"  ✓ Gravado em {TABLE_BRONZE_SRAG}")
+        print(f"  ✓ Gravado em {table_bronze_srag}")
 
     print("\n✓ Ingestão SRAG concluída.")
 
 
-def show_summary(spark: SparkSession):
+def show_summary(spark: SparkSession, args):
     """
     Consulta bronze_srag e imprime:
     - contagem de linhas por _ano_arquivo
     - range de DT_NOTIFIC por ano
     Útil para validar a ingestão após execução.
     """
-    print(f"\n── Resumo da tabela {TABLE_BRONZE_SRAG} ──")
-    df = spark.table(TABLE_BRONZE_SRAG)
+    table_bronze_srag = args.table_bronze_srag
+    print(f"\n── Resumo da tabela {table_bronze_srag} ──")
+    df = spark.table(table_bronze_srag)
 
     resumo = (
         df.groupBy("_ano_arquivo")
@@ -232,8 +237,13 @@ def show_summary(spark: SparkSession):
 
 # ── entrypoint ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
+    from cli import build_parser
+
+    p = build_parser("Ingestão Bronze — SRAG / SIVEP-Gripe")
+    p.add_argument(
+        "--live", action="store_true", default=False, help="Reprocessa apenas anos live (2025/2026)"
+    )
+    args, _ = p.parse_known_args()
 
     spark = SparkSession.builder.getOrCreate()
-    apenas_live = "--live" in sys.argv
-    gravar_bronze(spark, apenas_live=apenas_live)
+    gravar_bronze(spark, args, apenas_live=args.live)
