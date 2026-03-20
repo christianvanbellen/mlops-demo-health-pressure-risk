@@ -26,6 +26,7 @@ import mlflow
 import mlflow.spark
 import numpy as np
 from mlflow.models.signature import infer_signature
+from mlflow.tracking import MlflowClient
 from pyspark.ml import Pipeline
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
@@ -454,8 +455,17 @@ def treinar(spark: SparkSession, args) -> str:
     print(f"DEBUG removido MLFLOW_EXPERIMENT_ID: {repr(removed_id)}")
     print(f"DEBUG removido MLFLOW_EXPERIMENT_NAME: {repr(removed_name)}")
 
-    mlflow.set_experiment(experiment_name=mlflow_experiment_name)
-    print(f"DEBUG mlflow.set_experiment OK: {mlflow_experiment_name!r}")
+    client = MlflowClient()
+    exp = client.get_experiment_by_name(mlflow_experiment_name)
+    if exp is None:
+        experiment_id = client.create_experiment(mlflow_experiment_name)
+        print(f"DEBUG experimento criado: {mlflow_experiment_name!r} id={experiment_id!r}")
+    else:
+        experiment_id = exp.experiment_id
+        print(f"DEBUG experimento encontrado: {mlflow_experiment_name!r} id={experiment_id!r}")
+
+    mlflow.set_experiment(experiment_id=experiment_id)
+    print(f"DEBUG mlflow.set_experiment OK com experiment_id={experiment_id!r}")
     # --- fim DEBUG ---
 
     with mlflow.start_run(run_name="baseline_logistic_regression") as run:
