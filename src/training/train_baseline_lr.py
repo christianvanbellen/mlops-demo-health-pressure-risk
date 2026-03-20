@@ -424,14 +424,18 @@ def treinar(spark: SparkSession, args) -> str:
     e registra o modelo no MLflow e no Unity Catalog Model Registry.
     Retorna o run_id do MLflow.
     """
-    experiment = args.mlflow_experiment
+    mlflow_experiment_name = args.mlflow_experiment
     model_name = args.model_name
     table_features = args.table_gold_features
     train_end = args.train_end
     val_end = args.val_end
     test_start = args.test_start
 
-    mlflow.set_experiment(experiment_name=experiment)
+    assert mlflow_experiment_name is not None, "mlflow_experiment não pode ser None"
+    assert mlflow_experiment_name != "None", (
+        f"mlflow_experiment resolveu para string 'None': {mlflow_experiment_name!r}"
+    )
+    mlflow.set_experiment(experiment_name=mlflow_experiment_name)
 
     with mlflow.start_run(run_name="baseline_logistic_regression") as run:
         mlflow.log_params(
