@@ -20,6 +20,32 @@ resources:
               availability: ON_DEMAND
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
+              health.pressure.catalog: ${var.catalog}
+              health.pressure.schema: ${var.schema}
+              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
+              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
+              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
+              health.pressure.table_silver_srag: ${var.table_silver_srag}
+              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
+              health.pressure.table_gold_features: ${var.table_gold_features}
+              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
+              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
+              health.pressure.landing_path: ${var.landing_path}
+              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
+              health.pressure.model_name: ${var.model_name}
+              health.pressure.retrain_job_name: ${var.retrain_job_name}
+              health.pressure.train_end: ${var.train_end}
+              health.pressure.val_end: ${var.val_end}
+              health.pressure.test_start: ${var.test_start}
+              health.pressure.target_percentile: ${var.target_percentile}
+              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
+              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
+              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
+              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
+              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
+              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
+              health.pressure.num_boost_round: ${var.num_boost_round}
+              health.pressure.early_stopping: ${var.early_stopping}
             custom_tags:
               project: "health-pressure-risk"
               job: "weekly"
@@ -169,6 +195,32 @@ resources:
               availability: ON_DEMAND
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
+              health.pressure.catalog: ${var.catalog}
+              health.pressure.schema: ${var.schema}
+              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
+              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
+              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
+              health.pressure.table_silver_srag: ${var.table_silver_srag}
+              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
+              health.pressure.table_gold_features: ${var.table_gold_features}
+              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
+              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
+              health.pressure.landing_path: ${var.landing_path}
+              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
+              health.pressure.model_name: ${var.model_name}
+              health.pressure.retrain_job_name: ${var.retrain_job_name}
+              health.pressure.train_end: ${var.train_end}
+              health.pressure.val_end: ${var.val_end}
+              health.pressure.test_start: ${var.test_start}
+              health.pressure.target_percentile: ${var.target_percentile}
+              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
+              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
+              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
+              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
+              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
+              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
+              health.pressure.num_boost_round: ${var.num_boost_round}
+              health.pressure.early_stopping: ${var.early_stopping}
             custom_tags:
               project: "health-pressure-risk"
               job: "retrain"
