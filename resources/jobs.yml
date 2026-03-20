@@ -8,18 +8,47 @@ resources:
         Pipeline semanal do Radar de Pressão Assistencial.
         Roda toda segunda-feira: ingestão, transforms, scoring e monitoramento.
 
-      # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-      # job_clusters:
-      #   - job_cluster_key: weekly_ml_cluster
-      #     new_cluster:
-      #       spark_version: "16.4.x-cpu-ml-scala2.13"
-      #       node_type_id: "i3.xlarge"
-      #       num_workers: 1
-      #       spark_conf:
-      #         spark.databricks.delta.preview.enabled: "true"
-      #       custom_tags:
-      #         project: "health-pressure-risk"
-      #         job: "weekly"
+      job_clusters:
+        - job_cluster_key: weekly_ml_cluster
+          new_cluster:
+            spark_version: "16.4.x-cpu-ml-scala2.13"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            policy_id: "00069DFD463E0DBC"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+              health.pressure.catalog: ${var.catalog}
+              health.pressure.schema: ${var.schema}
+              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
+              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
+              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
+              health.pressure.table_silver_srag: ${var.table_silver_srag}
+              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
+              health.pressure.table_gold_features: ${var.table_gold_features}
+              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
+              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
+              health.pressure.landing_path: ${var.landing_path}
+              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
+              health.pressure.model_name: ${var.model_name}
+              health.pressure.retrain_job_name: ${var.retrain_job_name}
+              health.pressure.train_end: ${var.train_end}
+              health.pressure.val_end: ${var.val_end}
+              health.pressure.test_start: ${var.test_start}
+              health.pressure.target_percentile: ${var.target_percentile}
+              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
+              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
+              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
+              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
+              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
+              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
+              health.pressure.num_boost_round: ${var.num_boost_round}
+              health.pressure.early_stopping: ${var.early_stopping}
+            custom_tags:
+              project: "health-pressure-risk"
+              job: "weekly"
 
       schedule:
         quartz_cron_expression: "0 0 6 ? * MON"
@@ -30,34 +59,6 @@ resources:
         on_failure:
           - christian.bellen@indicium.tech
 
-      environment_variables:
-        CATALOG: ${var.catalog}
-        SCHEMA: ${var.schema}
-        TABLE_BRONZE_SRAG: ${var.table_bronze_srag}
-        TABLE_BRONZE_HOSPITAIS_LEITOS: ${var.table_bronze_hospitais_leitos}
-        TABLE_BRONZE_CNES: ${var.table_bronze_cnes}
-        TABLE_SILVER_SRAG: ${var.table_silver_srag}
-        TABLE_SILVER_CAPACITY: ${var.table_silver_capacity}
-        TABLE_GOLD_FEATURES: ${var.table_gold_features}
-        TABLE_GOLD_SCORING: ${var.table_gold_scoring}
-        TABLE_GOLD_MONITOR: ${var.table_gold_monitor}
-        LANDING_PATH: ${var.landing_path}
-        MLFLOW_EXPERIMENT: ${var.mlflow_experiment}
-        MODEL_NAME: ${var.model_name}
-        RETRAIN_JOB_NAME: ${var.retrain_job_name}
-        TRAIN_END: ${var.train_end}
-        VAL_END: ${var.val_end}
-        TEST_START: ${var.test_start}
-        TARGET_PERCENTILE: ${var.target_percentile}
-        PRECISION_K_THRESHOLD: ${var.precision_k_threshold}
-        MIN_CONSECUTIVE_BELOW: ${var.min_consecutive_below}
-        SCORING_MIN_QUALITY: ${var.scoring_min_quality}
-        AB_CHALLENGER_PCT: ${var.ab_challenger_pct}
-        DRIFT_SEASONAL_FEATURES: ${var.drift_seasonal_features}
-        LGBM_PARAMS_JSON: ${var.lgbm_params_json}
-        NUM_BOOST_ROUND: ${var.num_boost_round}
-        EARLY_STOPPING: ${var.early_stopping}
-
       tasks:
 
         - task_key: ingestao_bronze
@@ -65,9 +66,8 @@ resources:
           spark_python_task:
             python_file: ../src/ingestion/srag_ingest.py
             parameters: ["--live"]
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -80,9 +80,8 @@ resources:
           spark_python_task:
             python_file: ../src/ingestion/hospitais_leitos_ingest.py
             parameters: ["--live"]
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -94,9 +93,8 @@ resources:
             - task_key: ingestao_hospitais
           spark_python_task:
             python_file: ../src/transforms/silver_capacity_municipio_mes.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -107,9 +105,8 @@ resources:
             - task_key: ingestao_bronze
           spark_python_task:
             python_file: ../src/transforms/silver_srag_municipio_semana.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -121,9 +118,8 @@ resources:
             - task_key: silver_srag
           spark_python_task:
             python_file: ../src/transforms/gold_pressure_features.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -134,9 +130,8 @@ resources:
             - task_key: gold_features
           spark_python_task:
             python_file: ../src/scoring/batch_score.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -147,9 +142,8 @@ resources:
             - task_key: batch_score
           spark_python_task:
             python_file: ../src/monitoring/performance_monitor.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -160,9 +154,8 @@ resources:
             - task_key: performance_monitor
           spark_python_task:
             python_file: ../src/monitoring/feature_drift_monitor.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 1800
@@ -175,9 +168,8 @@ resources:
             - task_key: feature_drift_monitor
           spark_python_task:
             python_file: ../src/monitoring/retrain_trigger.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: weekly_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: weekly_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 600
@@ -191,18 +183,47 @@ resources:
         Treina LR + LightGBM, compara com champion atual e registra
         challenger no MLflow para aprovação humana.
 
-      # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-      # job_clusters:
-      #   - job_cluster_key: retrain_ml_cluster
-      #     new_cluster:
-      #       spark_version: "16.4.x-cpu-ml-scala2.13"
-      #       node_type_id: "i3.xlarge"
-      #       num_workers: 1
-      #       spark_conf:
-      #         spark.databricks.delta.preview.enabled: "true"
-      #       custom_tags:
-      #         project: "health-pressure-risk"
-      #         job: "retrain"
+      job_clusters:
+        - job_cluster_key: retrain_ml_cluster
+          new_cluster:
+            spark_version: "16.4.x-cpu-ml-scala2.13"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            policy_id: "00069DFD463E0DBC"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+              health.pressure.catalog: ${var.catalog}
+              health.pressure.schema: ${var.schema}
+              health.pressure.table_bronze_srag: ${var.table_bronze_srag}
+              health.pressure.table_bronze_hospitais_leitos: ${var.table_bronze_hospitais_leitos}
+              health.pressure.table_bronze_cnes: ${var.table_bronze_cnes}
+              health.pressure.table_silver_srag: ${var.table_silver_srag}
+              health.pressure.table_silver_capacity: ${var.table_silver_capacity}
+              health.pressure.table_gold_features: ${var.table_gold_features}
+              health.pressure.table_gold_scoring: ${var.table_gold_scoring}
+              health.pressure.table_gold_monitor: ${var.table_gold_monitor}
+              health.pressure.landing_path: ${var.landing_path}
+              health.pressure.mlflow_experiment: ${var.mlflow_experiment}
+              health.pressure.model_name: ${var.model_name}
+              health.pressure.retrain_job_name: ${var.retrain_job_name}
+              health.pressure.train_end: ${var.train_end}
+              health.pressure.val_end: ${var.val_end}
+              health.pressure.test_start: ${var.test_start}
+              health.pressure.target_percentile: ${var.target_percentile}
+              health.pressure.precision_k_threshold: ${var.precision_k_threshold}
+              health.pressure.min_consecutive_below: ${var.min_consecutive_below}
+              health.pressure.scoring_min_quality: ${var.scoring_min_quality}
+              health.pressure.ab_challenger_pct: ${var.ab_challenger_pct}
+              health.pressure.drift_seasonal_features: ${var.drift_seasonal_features}
+              health.pressure.lgbm_params_json: ${var.lgbm_params_json}
+              health.pressure.num_boost_round: ${var.num_boost_round}
+              health.pressure.early_stopping: ${var.early_stopping}
+            custom_tags:
+              project: "health-pressure-risk"
+              job: "retrain"
 
       # sem schedule — disparado por trigger ou manualmente
       email_notifications:
@@ -212,34 +233,6 @@ resources:
           - christian.bellen@indicium.tech
         on_failure:
           - christian.bellen@indicium.tech
-
-      environment_variables:
-        CATALOG: ${var.catalog}
-        SCHEMA: ${var.schema}
-        TABLE_BRONZE_SRAG: ${var.table_bronze_srag}
-        TABLE_BRONZE_HOSPITAIS_LEITOS: ${var.table_bronze_hospitais_leitos}
-        TABLE_BRONZE_CNES: ${var.table_bronze_cnes}
-        TABLE_SILVER_SRAG: ${var.table_silver_srag}
-        TABLE_SILVER_CAPACITY: ${var.table_silver_capacity}
-        TABLE_GOLD_FEATURES: ${var.table_gold_features}
-        TABLE_GOLD_SCORING: ${var.table_gold_scoring}
-        TABLE_GOLD_MONITOR: ${var.table_gold_monitor}
-        LANDING_PATH: ${var.landing_path}
-        MLFLOW_EXPERIMENT: ${var.mlflow_experiment}
-        MODEL_NAME: ${var.model_name}
-        RETRAIN_JOB_NAME: ${var.retrain_job_name}
-        TRAIN_END: ${var.train_end}
-        VAL_END: ${var.val_end}
-        TEST_START: ${var.test_start}
-        TARGET_PERCENTILE: ${var.target_percentile}
-        PRECISION_K_THRESHOLD: ${var.precision_k_threshold}
-        MIN_CONSECUTIVE_BELOW: ${var.min_consecutive_below}
-        SCORING_MIN_QUALITY: ${var.scoring_min_quality}
-        AB_CHALLENGER_PCT: ${var.ab_challenger_pct}
-        DRIFT_SEASONAL_FEATURES: ${var.drift_seasonal_features}
-        LGBM_PARAMS_JSON: ${var.lgbm_params_json}
-        NUM_BOOST_ROUND: ${var.num_boost_round}
-        EARLY_STOPPING: ${var.early_stopping}
 
       # parâmetros recebidos do retrain_trigger
       parameters:
@@ -256,9 +249,8 @@ resources:
           description: "Treina Logistic Regression baseline"
           spark_python_task:
             python_file: ../src/training/train_baseline_lr.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: retrain_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -270,9 +262,8 @@ resources:
             - task_key: train_baseline_lr
           spark_python_task:
             python_file: ../src/training/train_gbt.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: retrain_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
@@ -286,9 +277,8 @@ resources:
             - task_key: train_gbt
           spark_python_task:
             python_file: ../src/training/evaluate.py
-          # TODO: restaurar job cluster quando SP tiver permissão de criar clusters
-          # job_cluster_key: retrain_ml_cluster
-          existing_cluster_id: "0319-174645-eah19iqa"
+          job_cluster_key: retrain_ml_cluster
+          # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
           timeout_seconds: 3600
