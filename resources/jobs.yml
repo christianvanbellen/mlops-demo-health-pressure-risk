@@ -72,7 +72,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
@@ -90,7 +90,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 1800
@@ -107,7 +107,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 1800
@@ -123,7 +123,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 1800
@@ -140,7 +140,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
@@ -156,7 +156,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 1800
@@ -172,7 +172,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
@@ -188,7 +188,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 1800
@@ -206,7 +206,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 600
@@ -292,7 +292,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
@@ -309,7 +309,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
@@ -328,7 +328,7 @@ resources:
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
-                package: databricks-labs-dqx>=0.5.0
+                package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
                 package: evidently>=0.7.0
           timeout_seconds: 3600
