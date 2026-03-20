@@ -285,7 +285,7 @@ def monitorar_drift(spark: SparkSession, args) -> dict:
 
     table_drift = f"{catalog}.{schema}.monitoring_feature_drift"
 
-    mlflow.set_experiment(mlflow_experiment)
+    mlflow.set_experiment(experiment_name=mlflow_experiment)
 
     print("\n── Feature Drift Monitor ──────────────────────────────────")
 

@@ -473,7 +473,7 @@ def treinar(spark: SparkSession, args) -> str:
     num_boost_round = args.num_boost_round
     early_stopping = args.early_stopping
 
-    mlflow.set_experiment(experiment)
+    mlflow.set_experiment(experiment_name=experiment)
     mlflow.lightgbm.autolog(log_models=False)
     # log_models=False — modelo logado manualmente com registered_model_name
     # para garantir registro no Unity Catalog

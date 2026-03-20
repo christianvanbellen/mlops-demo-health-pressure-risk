@@ -448,7 +448,7 @@ def monitorar(spark: SparkSession, args) -> dict:
     table_scoring = args.table_gold_scoring
     table_monitor = args.table_gold_monitor
 
-    mlflow.set_experiment(mlflow_experiment)
+    mlflow.set_experiment(experiment_name=mlflow_experiment)
 
     with mlflow.start_run(run_name=f"performance_monitor_{date.today()}") as run:
         print("\n── Performance Monitor ──")

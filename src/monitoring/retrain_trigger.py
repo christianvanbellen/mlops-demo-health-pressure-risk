@@ -321,7 +321,7 @@ def verificar_e_disparar(spark: SparkSession, args, dry_run: bool = False) -> di
         print("\n  ✓ Sem trigger — retraining não necessário")
 
     # 4. loga decisão no MLflow
-    mlflow.set_experiment(mlflow_experiment)
+    mlflow.set_experiment(experiment_name=mlflow_experiment)
 
     with mlflow.start_run(run_name=f"retrain_trigger_{date.today()}") as run:
         mlflow.log_params(

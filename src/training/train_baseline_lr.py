@@ -19,7 +19,6 @@
 #   - Modelo registrado no Unity Catalog: pressure_risk_classifier
 
 import os
-import sys
 import tempfile
 
 import matplotlib.pyplot as plt
@@ -432,10 +431,7 @@ def treinar(spark: SparkSession, args) -> str:
     val_end = args.val_end
     test_start = args.test_start
 
-    print(f"DEBUG sys.argv: {sys.argv}")
-    print(f"DEBUG args: {vars(args)}")
-    print(f"DEBUG mlflow_experiment type={type(experiment)!r} value={experiment!r}")
-    mlflow.set_experiment(experiment)
+    mlflow.set_experiment(experiment_name=experiment)
 
     with mlflow.start_run(run_name="baseline_logistic_regression") as run:
         mlflow.log_params(
