@@ -13,6 +13,8 @@
 
 from databricks.labs.dqx.check_funcs import (
     is_in_list,
+    is_in_range,
+    is_not_less_than,
     is_not_null,
     is_not_null_and_not_empty,
     is_valid_date,
@@ -149,7 +151,9 @@ def checks_silver_capacity() -> list[DQRowRule]:
         ),
         # leitos_totais não pode ser negativo
         DQRowRule(
-            check_func=lambda row: row["leitos_totais"] >= 0,
+            column="leitos_totais",
+            check_func=is_not_less_than,
+            check_func_kwargs={"limit": 0},
             name="leitos_totais_nao_negativo",
             criticality="error",
         ),
@@ -181,19 +185,25 @@ def checks_gold_features() -> list[DQRowRule]:
         ),
         # feature principal não pode ser negativa
         DQRowRule(
-            check_func=lambda row: row["casos_por_leito"] >= 0,
+            column="casos_por_leito",
+            check_func=is_not_less_than,
+            check_func_kwargs={"limit": 0},
             name="casos_por_leito_nao_negativo",
             criticality="error",
         ),
         # data_quality_score deve estar no range esperado [0, 1]
         DQRowRule(
-            check_func=lambda row: 0.0 <= row["data_quality_score"] <= 1.0,
+            column="data_quality_score",
+            check_func=is_in_range,
+            check_func_kwargs={"min_limit": 0.0, "max_limit": 1.0},
             name="data_quality_score_range_valido",
             criticality="warn",
         ),
         # leitos_totais >= 10 (filtro aplicado upstream — confirma invariante)
         DQRowRule(
-            check_func=lambda row: row["leitos_totais"] >= 10,
+            column="leitos_totais",
+            check_func=is_not_less_than,
+            check_func_kwargs={"limit": 10},
             name="leitos_totais_filtro_minimo",
             criticality="warn",
         ),
