@@ -17,7 +17,7 @@ resources:
             policy_id: "00069DFD463E0DBC"
             aws_attributes:
               first_on_demand: 1
-              availability: ON_DEMAND
+              availability: SPOT_WITH_FALLBACK
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
               health.pressure.catalog: ${var.catalog}
@@ -192,7 +192,7 @@ resources:
             policy_id: "00069DFD463E0DBC"
             aws_attributes:
               first_on_demand: 1
-              availability: ON_DEMAND
+              availability: SPOT_WITH_FALLBACK
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
               health.pressure.catalog: ${var.catalog}
