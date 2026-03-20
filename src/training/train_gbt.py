@@ -474,7 +474,7 @@ def treinar(spark: SparkSession) -> str:
     e registra no MLflow e Unity Catalog Model Registry.
     Retorna o run_id do MLflow.
     """
-    mlflow.set_experiment(EXPERIMENT)
+    mlflow.set_experiment(experiment_name=EXPERIMENT)
     mlflow.lightgbm.autolog(log_models=False)
     # log_models=False — modelo logado manualmente com registered_model_name
     # para garantir registro no Unity Catalog

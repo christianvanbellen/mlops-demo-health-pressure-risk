@@ -446,7 +446,7 @@ def monitorar(spark: SparkSession, experiment_path: str = None) -> dict:
     Retorna dict com status, trigger_retraining e métricas recentes.
     """
     experiment_path = experiment_path or MLFLOW_EXPERIMENT
-    mlflow.set_experiment(experiment_path)
+    mlflow.set_experiment(experiment_name=experiment_path)
 
     with mlflow.start_run(run_name=f"performance_monitor_{date.today()}") as run:
         print("\n── Performance Monitor ──")

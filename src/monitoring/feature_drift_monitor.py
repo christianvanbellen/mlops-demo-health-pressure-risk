@@ -283,7 +283,7 @@ def monitorar_drift(spark: SparkSession, experiment_path: str | None = None) -> 
       alerta → >= 30% features com drift severo (PSI >= 0.25)
     """
     exp_path = experiment_path or MLFLOW_EXPERIMENT
-    mlflow.set_experiment(exp_path)
+    mlflow.set_experiment(experiment_name=exp_path)
 
     print("\n── Feature Drift Monitor ──────────────────────────────────")
 
