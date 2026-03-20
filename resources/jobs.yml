@@ -71,6 +71,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
           max_retries: 1
 
@@ -85,6 +89,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 1800
           max_retries: 1
 
@@ -98,6 +106,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 1800
 
         - task_key: silver_srag
@@ -110,6 +122,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 1800
 
         - task_key: gold_features
@@ -123,6 +139,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
 
         - task_key: batch_score
@@ -135,6 +155,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 1800
 
         - task_key: performance_monitor
@@ -147,6 +171,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
 
         - task_key: feature_drift_monitor
@@ -159,6 +187,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 1800
 
         - task_key: retrain_trigger
@@ -173,6 +205,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 600
 
     # ── Job 2: Retraining ────────────────────────────────
@@ -255,6 +291,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
           max_retries: 1
 
@@ -268,6 +308,10 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
           max_retries: 1
 
@@ -283,4 +327,8 @@ resources:
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
             - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - pypi:
+                package: databricks-labs-dqx>=0.5.0
+            - pypi:
+                package: evidently>=0.7.0
           timeout_seconds: 3600
