@@ -95,8 +95,9 @@ jobs:
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME..."
-          databricks auth describe
-          databricks fs cp "$WHL" \
+          cd /tmp
+          databricks fs cp \
+            "$GITHUB_WORKSPACE/$WHL" \
             "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
           echo "Upload concluído"
