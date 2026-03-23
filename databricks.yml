@@ -33,7 +33,7 @@ variables:
   landing_path:
     default: /Volumes/ds_dev_db/dev_christian_van_bellen/landing
   mlflow_experiment:
-    default: "/Shared/health-pressure-risk/pressure-risk-baseline-lr"
+    default: "/Shared/mlops_workshop/health-pressure-risk/pressure-risk-baseline-lr"
 
   # model registry
   model_name:
