@@ -78,9 +78,7 @@ jobs:
         run: uv build --wheel
 
       - name: Install Databricks CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-          databricks --version
+        uses: databricks/setup-cli@v0.295.0
 
       - name: Configure Databricks auth
         run: |
@@ -93,9 +91,11 @@ jobs:
         run: |
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
+          echo "Uploading $WHL_NAME to Unity Catalog Volume..."
           databricks fs cp "$WHL" \
-            "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/${WHL_NAME}" \
+            "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
+          echo "Upload concluído: dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME"
 
   # ── Job 4: Validate bundle (todos os pushes) ─────────
   dab-validate:
@@ -120,9 +120,7 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: Install Databricks CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-          databricks --version
+        uses: databricks/setup-cli@v0.295.0
 
       - name: Configure Databricks auth
         run: |
@@ -161,9 +159,7 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: Install Databricks CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-          databricks --version
+        uses: databricks/setup-cli@v0.295.0
 
       - name: Configure Databricks auth
         run: |
@@ -203,9 +199,7 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: Install Databricks CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-          databricks --version
+        uses: databricks/setup-cli@v0.295.0
 
       - name: Configure Databricks auth
         run: |
