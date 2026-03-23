@@ -91,7 +91,7 @@ jobs:
         run: |
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
-          databricks files upload "$WHL" \
+          databricks fs cp "$WHL" \
             "/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/${WHL_NAME}" \
             --overwrite
 
