@@ -26,6 +26,7 @@ import mlflow
 import mlflow.spark
 import numpy as np
 from mlflow.models.signature import infer_signature
+from mlflow.tracking import MlflowClient
 from pyspark.ml import Pipeline
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
@@ -508,6 +509,20 @@ def treinar(spark: SparkSession, args) -> str:
             signature=signature,
             registered_model_name=model_name,
         )
+
+        # atribui alias @candidate_lr à versão recém registrada
+        client = MlflowClient()
+        versions = client.search_model_versions(f"run_id='{run.info.run_id}'")
+        lr_version = next((v.version for v in versions if v.run_id == run.info.run_id), None)
+        if lr_version:
+            client.set_registered_model_alias(
+                name=model_name,
+                alias="candidate_lr",
+                version=lr_version,
+            )
+            print(f"  Alias @candidate_lr → versão {lr_version}")
+        else:
+            print("  ⚠ Versão registrada não encontrada — alias @candidate_lr não atribuído")
 
         print(f"\n✓ Run ID: {run.info.run_id}")
         print(f"  Modelo registrado como: {model_name}")

@@ -28,7 +28,7 @@ _METRICAS_COMPARACAO = [
 ]
 
 # aliases reconhecidos como "ativos"
-_ALIASES_ATIVOS = ["champion", "challenger", "staging"]
+_ALIASES_ATIVOS = ["champion", "challenger", "staging", "candidate_lr", "candidate_lgbm"]
 
 
 # ── helpers ───────────────────────────────────────────────────────
@@ -316,6 +316,34 @@ def status(model_name: str) -> None:
     print(_sep())
 
 
+def limpar_candidatos(model_name: str) -> None:
+    """
+    Remove aliases @candidate_lr e @candidate_lgbm manualmente.
+    Útil se o evaluate.py foi interrompido antes de limpar,
+    ou para forçar um novo ciclo de treino.
+    """
+    client = _client()
+    removidos = []
+
+    for alias in ("candidate_lr", "candidate_lgbm"):
+        versao = _versao_do_alias(client, alias, model_name)
+        if versao:
+            try:
+                client.delete_registered_model_alias(model_name, alias)
+                removidos.append(f"@{alias} (era v{versao})")
+            except Exception as e:
+                print(f"  ⚠ Falha ao remover @{alias}: {e}")
+        else:
+            print(f"  @{alias} não está atribuído — nada a remover")
+
+    print(f"\n{_sep()}")
+    if removidos:
+        print(f"  ✓ Aliases removidos: {', '.join(removidos)}")
+    else:
+        print("  Nenhum alias candidate encontrado")
+    print(_sep())
+
+
 # ── entrypoint CLI ────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -349,6 +377,11 @@ if __name__ == "__main__":
     p.add_argument("versao_a")
     p.add_argument("versao_b")
 
+    subparsers.add_parser(
+        "limpar-candidatos",
+        help="Remove aliases @candidate_lr e @candidate_lgbm manualmente",
+    )
+
     args = parser.parse_args()
 
     if args.comando == "listar":
@@ -361,5 +394,7 @@ if __name__ == "__main__":
         arquivar(args.versao, args.model_name)
     elif args.comando == "comparar":
         comparar(args.versao_a, args.versao_b, args.model_name)
+    elif args.comando == "limpar-candidatos":
+        limpar_candidatos(args.model_name)
     else:
         parser.print_help()

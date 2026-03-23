@@ -26,6 +26,7 @@ import mlflow
 import mlflow.lightgbm
 import pandas as pd
 from mlflow.models.signature import infer_signature
+from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from sklearn.metrics import (
@@ -537,6 +538,20 @@ def treinar(spark: SparkSession, args) -> str:
             signature=signature,
             registered_model_name=model_name,
         )
+
+        # atribui alias @candidate_lgbm à versão recém registrada
+        client = MlflowClient()
+        versions = client.search_model_versions(f"run_id='{run.info.run_id}'")
+        lgbm_version = next((v.version for v in versions if v.run_id == run.info.run_id), None)
+        if lgbm_version:
+            client.set_registered_model_alias(
+                name=model_name,
+                alias="candidate_lgbm",
+                version=lgbm_version,
+            )
+            print(f"  Alias @candidate_lgbm → versão {lgbm_version}")
+        else:
+            print("  ⚠ Versão registrada não encontrada — alias @candidate_lgbm não atribuído")
 
         print(f"\n✓ Run ID: {run.info.run_id}")
         print(f"  Best iteration: {model.best_iteration}")
