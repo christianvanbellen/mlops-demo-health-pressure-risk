@@ -93,6 +93,8 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_AUTH_TYPE: oauth-m2m
         run: |
+          echo "CLIENT_ID len: ${#DATABRICKS_CLIENT_ID}"
+          echo "SECRET len: ${#DATABRICKS_CLIENT_SECRET}"
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME..."
