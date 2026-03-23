@@ -384,7 +384,7 @@ def avaliar(spark: SparkSession, args, retrain_id: str = None) -> tuple:
 
     Retorna (decision, melhor_run_id).
     """
-    experiment = args.mlflow_experiment
+    mlflow_experiment_name = args.mlflow_experiment
     model_name = args.model_name
     table_features = args.table_gold_features
     train_end = args.train_end
@@ -393,7 +393,41 @@ def avaliar(spark: SparkSession, args, retrain_id: str = None) -> tuple:
 
     retrain_id = retrain_id or str(uuid.uuid4())[:8]
 
-    mlflow.set_experiment(experiment_name=experiment)
+    # --- DEBUG: inspecionar contexto MLflow injetado pelo Databricks ---
+    print(f"DEBUG MLFLOW_EXPERIMENT_ID env: {repr(os.environ.get('MLFLOW_EXPERIMENT_ID'))}")
+    print(f"DEBUG MLFLOW_EXPERIMENT_NAME env: {repr(os.environ.get('MLFLOW_EXPERIMENT_NAME'))}")
+    print(f"DEBUG MLFLOW_RUN_ID env: {repr(os.environ.get('MLFLOW_RUN_ID'))}")
+    print(
+        f"DEBUG todas env vars MLFLOW: { {k: v for k, v in os.environ.items() if 'MLFLOW' in k} }"
+    )
+
+    # --- asserts: garantir que o valor passado via argparse está correto ---
+    assert mlflow_experiment_name is not None, "mlflow_experiment não pode ser None"
+    assert mlflow_experiment_name != "None", (
+        f"mlflow_experiment resolveu para string 'None': {mlflow_experiment_name!r}"
+    )
+    assert mlflow_experiment_name.startswith("/"), (
+        f"mlflow_experiment deve ser um path absoluto, recebeu: {mlflow_experiment_name!r}"
+    )
+
+    # --- fix: limpar env vars injetadas pelo Databricks antes de set_experiment ---
+    removed_id = os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
+    removed_name = os.environ.pop("MLFLOW_EXPERIMENT_NAME", None)
+    print(f"DEBUG removido MLFLOW_EXPERIMENT_ID: {repr(removed_id)}")
+    print(f"DEBUG removido MLFLOW_EXPERIMENT_NAME: {repr(removed_name)}")
+
+    client_exp = MlflowClient()
+    exp = client_exp.get_experiment_by_name(mlflow_experiment_name)
+    if exp is None:
+        experiment_id = client_exp.create_experiment(mlflow_experiment_name)
+        print(f"DEBUG experimento criado: {mlflow_experiment_name!r} id={experiment_id!r}")
+    else:
+        experiment_id = exp.experiment_id
+        print(f"DEBUG experimento encontrado: {mlflow_experiment_name!r} id={experiment_id!r}")
+
+    mlflow.set_experiment(experiment_id=experiment_id)
+    print(f"DEBUG mlflow.set_experiment OK com experiment_id={experiment_id!r}")
+    # --- fim DEBUG ---
 
     # busca candidatos via aliases
     print("\nBuscando candidatos no registry via aliases ...")
