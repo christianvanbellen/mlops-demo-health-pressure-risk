@@ -92,15 +92,21 @@ jobs:
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
+          echo "--- ~/.databrickscfg ---"
+          cat ~/.databrickscfg 2>/dev/null || echo "arquivo não existe"
+
+          echo "--- env vars ---"
+          env | grep DATABRICKS | sed 's/SECRET=.*/SECRET=***/'
+
+          echo "--- auth describe ---"
+          databricks auth describe 2>&1 || true
+
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME..."
-          cd /tmp
-          databricks fs cp \
-            "$GITHUB_WORKSPACE/$WHL" \
+          databricks fs cp "$WHL" \
             "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
-          echo "Upload concluído"
 
   # ── Job 4: Validate bundle (todos os pushes) ─────────
   dab-validate:
