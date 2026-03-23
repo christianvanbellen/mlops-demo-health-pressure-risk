@@ -85,22 +85,21 @@ jobs:
           echo "DATABRICKS_HOST=${{ secrets.DATABRICKS_HOST }}" >> $GITHUB_ENV
           echo "DATABRICKS_CLIENT_ID=${{ secrets.DATABRICKS_CLIENT_ID }}" >> $GITHUB_ENV
           echo "DATABRICKS_CLIENT_SECRET=${{ secrets.DATABRICKS_CLIENT_SECRET }}" >> $GITHUB_ENV
-          echo "DATABRICKS_AUTH_TYPE=oauth-m2m" >> $GITHUB_ENV
 
       - name: Upload wheel to Unity Catalog Volume
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_AUTH_TYPE: oauth-m2m
         run: |
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME..."
+          databricks auth describe
           databricks fs cp "$WHL" \
             "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
-          echo "Upload concluído: dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME"
+          echo "Upload concluído"
 
   # ── Job 4: Validate bundle (todos os pushes) ─────────
   dab-validate:
