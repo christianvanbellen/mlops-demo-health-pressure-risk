@@ -91,9 +91,27 @@ jobs:
         run: |
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
+          echo "Wheel: $WHL_NAME"
+
+          echo "--- Tentativa 1: /Volumes/ ---"
           databricks fs cp "$WHL" \
             "/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/" \
-            --overwrite
+            --overwrite && echo "Tentativa 1 OK" && exit 0 || echo "Tentativa 1 falhou"
+
+          echo "--- Tentativa 2: dbfs:/Volumes/ ---"
+          databricks fs cp "$WHL" \
+            "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/" \
+            --overwrite && echo "Tentativa 2 OK" && exit 0 || echo "Tentativa 2 falhou"
+
+          echo "--- Tentativa 3: listar volume para verificar acesso ---"
+          databricks fs ls "/Volumes/ds_dev_db/dev_christian_van_bellen/wheels" \
+            && echo "ls OK" || echo "ls falhou"
+
+          databricks fs ls "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels" \
+            && echo "ls dbfs OK" || echo "ls dbfs falhou"
+
+          echo "--- Todas as tentativas falharam ---"
+          exit 1
 
   # ── Job 4: Validate bundle (todos os pushes) ─────────
   dab-validate:
