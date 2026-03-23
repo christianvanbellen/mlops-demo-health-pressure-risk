@@ -93,9 +93,9 @@ jobs:
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME to Unity Catalog Volume..."
           databricks fs cp "$WHL" \
-            "/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/" \
+            "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
-          echo "Upload concluído: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME"
+          echo "Upload concluído: dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME"
 
   # ── Job 4: Validate bundle (todos os pushes) ─────────
   dab-validate:
