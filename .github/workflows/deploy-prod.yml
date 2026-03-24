@@ -117,7 +117,7 @@ jobs:
   dab-deploy-prod:
     name: Deploy Bundle (prod)
     runs-on: ubuntu-latest
-    needs: [upload-wheel-prod, dab-validate-prod]
+    needs: [build-wheel, dab-validate-prod]
     environment: production
     # 'environment: production' ativa o manual approval gate
     # do GitHub Environments antes do deploy em prod
