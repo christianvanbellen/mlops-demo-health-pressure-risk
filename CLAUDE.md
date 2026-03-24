@@ -141,6 +141,52 @@ Versão atual da regra: `target_definition_version = 'v1'`
 
 ---
 
+## Ambientes e fluxo de promoção
+
+| Target | Catalog | Schema | Quando deployar |
+|---|---|---|---|
+| `dev` | `ds_dev_db` | `dev_christian_van_bellen` | push para qualquer branch (exceto main) |
+| `qa` | `ds_qa_db` | `mlops_demo_health_pressure_risk` | PR aberto para main |
+| `prod` | `ds_prod_db` | `mlops_demo_health_pressure_risk` | merge na main (com approval gate) |
+
+### Regras de deploy por evento GitHub Actions
+
+| Evento | Workflows acionados | Jobs executados |
+|---|---|---|
+| `push` → branch (não main) | `ci.yml` | lint + test + build + upload-dev + validate-dev |
+| `pull_request` → main | `ci.yml` | lint + test + build + upload-dev + upload-qa + validate-dev + validate-qa + deploy-dev + deploy-qa |
+| `push` → main (merge) | `deploy-prod.yml` | lint + test + build + upload-prod + validate-prod + deploy-prod (approval) |
+
+### Volumes de wheels por ambiente
+
+- dev:  `/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/`
+- qa:   `/Volumes/ds_qa_db/mlops_demo_health_pressure_risk/wheels/`
+- prod: `/Volumes/ds_prod_db/mlops_demo_health_pressure_risk/wheels/`
+
+### Pré-requisitos para primeiro deploy de QA e Prod
+
+Executar no Databricks SQL Editor como admin antes do primeiro deploy:
+
+```sql
+-- QA
+CREATE SCHEMA IF NOT EXISTS ds_qa_db.mlops_demo_health_pressure_risk;
+GRANT USE CATALOG ON CATALOG ds_qa_db TO `mlops-demo`;
+GRANT ALL PRIVILEGES ON SCHEMA ds_qa_db.mlops_demo_health_pressure_risk TO `mlops-demo`;
+
+-- Prod
+CREATE SCHEMA IF NOT EXISTS ds_prod_db.mlops_demo_health_pressure_risk;
+GRANT USE CATALOG ON CATALOG ds_prod_db TO `mlops-demo`;
+GRANT ALL PRIVILEGES ON SCHEMA ds_prod_db.mlops_demo_health_pressure_risk TO `mlops-demo`;
+```
+
+Criar também os Volumes de wheels:
+```sql
+CREATE VOLUME IF NOT EXISTS ds_qa_db.mlops_demo_health_pressure_risk.wheels;
+CREATE VOLUME IF NOT EXISTS ds_prod_db.mlops_demo_health_pressure_risk.wheels;
+```
+
+---
+
 ## Fluxo obrigatório de Git
 
 Todo trabalho de código deve seguir este ritual, sem exceção.

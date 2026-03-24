@@ -1,0 +1,137 @@
+name: Deploy Prod — Health Pressure Risk
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PYTHON_VERSION: "3.11"
+  UV_VERSION: "0.9.0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+
+  # ── Job 1: Lint e testes ──────────────────────────────
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Lint — ruff check
+        run: uv run ruff check src/ --output-format=github
+
+      - name: Lint — ruff format check
+        run: uv run ruff format src/ --check
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short
+        env:
+          PYTHONPATH: src
+
+  # ── Job 2: Build wheel + upload prod ─────────────────
+  build-wheel:
+    name: Build and Publish Wheel (prod)
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.295.0
+
+      - name: Configure Databricks auth
+        run: |
+          echo "DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_ID=${{ vars.DATABRICKS_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_SECRET=${{ secrets.DATABRICKS_CLIENT_SECRET }}" >> $GITHUB_ENV
+
+      - name: Upload wheel to prod Volume
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_AUTH_TYPE: oauth-m2m
+        run: |
+          WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
+          WHL_NAME=$(basename "$WHL")
+          echo "Uploading $WHL_NAME → prod..."
+          cd /tmp
+          databricks fs cp \
+            "$GITHUB_WORKSPACE/$WHL" \
+            "dbfs:/Volumes/ds_prod_db/mlops_demo_health_pressure_risk/wheels/$WHL_NAME" \
+            --overwrite
+          echo "Upload prod concluído"
+
+  # ── Job 4: Validate bundle prod ───────────────────────
+  dab-validate-prod:
+    name: Validate Bundle (prod)
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, build-wheel]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.295.0
+
+      - name: Validate bundle (prod)
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_AUTH_TYPE: oauth-m2m
+        run: databricks bundle validate --target prod
+
+  # ── Job 5: Deploy prod (com approval gate) ────────────
+  dab-deploy-prod:
+    name: Deploy Bundle (prod)
+    runs-on: ubuntu-latest
+    needs: [upload-wheel-prod, dab-validate-prod]
+    environment: production
+    # 'environment: production' ativa o manual approval gate
+    # do GitHub Environments antes do deploy em prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.295.0
+
+      - name: Deploy bundle (prod)
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_AUTH_TYPE: oauth-m2m
+        run: databricks bundle deploy --target prod
