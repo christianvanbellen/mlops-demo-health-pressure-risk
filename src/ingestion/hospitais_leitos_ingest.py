@@ -3,6 +3,7 @@
 # Fonte: https://dadosabertos.saude.gov.br/dataset/hospitais-e-leitos
 
 import io
+import os
 import zipfile
 from datetime import datetime
 
@@ -171,11 +172,14 @@ def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
     spark.sql(f"CREATE TABLE IF NOT EXISTS {table_bronze_hospitais_leitos} USING DELTA")
 
     for ano, config in ANOS.items():
-        if apenas_live and not config["is_live"]:
-            print(f"\n── {ano}: pulando (congelado) ──")
+        fmt = config["formato"]
+        ext = "csv" if config["zip"] else fmt
+        caminho_esperado = f"{landing_path}/hospitais_leitos_{ano}.{ext}"
+
+        if not config["is_live"] and os.path.exists(caminho_esperado):
+            print(f"\n── {ano}: congelado e já existe no landing, pulando ──")
             continue
 
-        fmt = config["formato"]
         url = urls_disponiveis.get(ano, {}).get(fmt)
 
         if not url:
