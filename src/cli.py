@@ -234,18 +234,4 @@ def build_parser(description: str = "") -> argparse.ArgumentParser:
         help="Rounds sem melhoria para early stopping LightGBM (default: 50)",
     )
 
-    # ── Run IDs para evaluate.py ──────────────────────────────────────────────
-    p.add_argument(
-        "--lr_run_id",
-        type=str,
-        default="",
-        help="MLflow run_id do modelo Logistic Regression a avaliar",
-    )
-    p.add_argument(
-        "--lgbm_run_id",
-        type=str,
-        default="",
-        help="MLflow run_id do modelo LightGBM a avaliar",
-    )
-
     return p

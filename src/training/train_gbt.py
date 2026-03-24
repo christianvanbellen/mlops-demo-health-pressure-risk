@@ -574,6 +574,26 @@ def treinar(spark: SparkSession, args) -> str:
             registered_model_name=model_name,
         )
 
+        # atribui alias @candidate_lgbm à versão recém registrada
+        # UC não suporta filtro run_id na API — filtra em Python após buscar por name
+        client = MlflowClient()
+        versions = client.search_model_versions(f"name='{model_name}'")
+        lgbm_version = next(
+            (v.version for v in versions if v.run_id == run.info.run_id),
+            None,
+        )
+        if lgbm_version is None:
+            raise ValueError(
+                f"Versão do modelo não encontrada para run_id={run.info.run_id!r}. "
+                f"Verifique se o modelo foi registrado corretamente."
+            )
+        client.set_registered_model_alias(
+            name=model_name,
+            alias="candidate_lgbm",
+            version=lgbm_version,
+        )
+        print(f"  Alias @candidate_lgbm atribuído à versão {lgbm_version}")
+
         print(f"\n✓ Run ID: {run.info.run_id}")
         print(f"  Best iteration: {model.best_iteration}")
         print(f"  Val  AUC-ROC: {all_metrics['val']['auc_roc']:.4f}")

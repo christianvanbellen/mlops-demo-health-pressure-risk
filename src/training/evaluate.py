@@ -41,9 +41,11 @@ def _champion_existe(model_name: str) -> bool:
     """Retorna True se o alias @champion está atribuído no registry."""
     client = MlflowClient()
     try:
-        client.get_registered_model_alias(model_name, "champion")
+        mv = client.get_model_version_by_alias(model_name, "champion")
+        print(f"  @champion encontrado → versão {mv.version} (run_id={mv.run_id[:8]}...)")
         return True
-    except Exception:
+    except Exception as e:
+        print(f"  @champion não encontrado: {e}")
         return False
 
 
@@ -55,6 +57,43 @@ def _get_version_por_run_id(run_id: str, model_name: str) -> str:
         if v.run_id == run_id:
             return v.version
     raise ValueError(f"Versão não encontrada para run_id={run_id}")
+
+
+def _get_candidatos(model_name: str) -> tuple[str, str]:
+    """
+    Busca os run_ids dos candidatos via aliases @candidate_lr e @candidate_lgbm.
+    Levanta ValueError se algum alias não existir — sinal de que os scripts de
+    treino ainda não rodaram.
+    """
+    client = MlflowClient()
+    try:
+        lr_mv = client.get_model_version_by_alias(model_name, "candidate_lr")
+    except Exception as e:
+        raise ValueError(
+            "Alias @candidate_lr não encontrado no registry. "
+            "Execute train_baseline_lr.py antes do evaluate."
+        ) from e
+    try:
+        lgbm_mv = client.get_model_version_by_alias(model_name, "candidate_lgbm")
+    except Exception as e:
+        raise ValueError(
+            "Alias @candidate_lgbm não encontrado no registry. "
+            "Execute train_gbt.py antes do evaluate."
+        ) from e
+    print(f"  @candidate_lr   → v{lr_mv.version} (run_id={lr_mv.run_id[:8]}...)")
+    print(f"  @candidate_lgbm → v{lgbm_mv.version} (run_id={lgbm_mv.run_id[:8]}...)")
+    return lr_mv.run_id, lgbm_mv.run_id
+
+
+def _limpar_aliases_candidatos(model_name: str) -> None:
+    """Remove @candidate_lr e @candidate_lgbm do registry após avaliação."""
+    client = MlflowClient()
+    for alias in ("candidate_lr", "candidate_lgbm"):
+        try:
+            client.delete_registered_model_alias(model_name, alias)
+            print(f"  Alias @{alias} removido")
+        except Exception:
+            pass  # alias já não existia — sem problema
 
 
 def _registrar_alias(version: str, alias: str, model_name: str):
@@ -337,12 +376,13 @@ def _inferir_model_type(run_id: str) -> str:
 
 
 # ── função principal ─────────────────────────────────────────────
-def avaliar(
-    spark: SparkSession, args, lr_run_id: str, lgbm_run_id: str, retrain_id: str = None
-) -> tuple:
+def avaliar(spark: SparkSession, args, retrain_id: str = None) -> tuple:
     """
     Compara LR e LightGBM e decide entre first_deploy, registered_challenger
     ou no_change com base na lógica champion/challenger.
+
+    Busca os candidatos via aliases @candidate_lr e @candidate_lgbm no registry.
+    Remove os aliases candidate_* ao final da avaliação.
 
     Retorna (decision, melhor_run_id).
     """
@@ -378,10 +418,10 @@ def avaliar(
     print(f"DEBUG removido MLFLOW_EXPERIMENT_ID: {repr(removed_id)}")
     print(f"DEBUG removido MLFLOW_EXPERIMENT_NAME: {repr(removed_name)}")
 
-    client = MlflowClient()
-    exp = client.get_experiment_by_name(mlflow_experiment_name)
+    client_exp = MlflowClient()
+    exp = client_exp.get_experiment_by_name(mlflow_experiment_name)
     if exp is None:
-        experiment_id = client.create_experiment(mlflow_experiment_name)
+        experiment_id = client_exp.create_experiment(mlflow_experiment_name)
         print(f"DEBUG experimento criado: {mlflow_experiment_name!r} id={experiment_id!r}")
     else:
         experiment_id = exp.experiment_id
@@ -390,6 +430,10 @@ def avaliar(
     mlflow.set_experiment(experiment_id=experiment_id)
     print(f"DEBUG mlflow.set_experiment OK com experiment_id={experiment_id!r}")
     # --- fim DEBUG ---
+
+    # busca candidatos via aliases
+    print("\nBuscando candidatos no registry via aliases ...")
+    lr_run_id, lgbm_run_id = _get_candidatos(model_name)
 
     with mlflow.start_run(run_name=f"evaluation_{retrain_id}") as run:
         mlflow.set_tag("retrain_id", retrain_id)
@@ -572,7 +616,12 @@ def avaliar(
 
         print(f"\n✓ Evaluation run ID: {run.info.run_id}")
         print(f"  Decision: {decision}")
-        return decision, melhor["run_id"]
+
+    # limpa aliases candidate após avaliação (fora do run para não afetar o log)
+    print("\nLimpando aliases @candidate_* ...")
+    _limpar_aliases_candidatos(model_name)
+
+    return decision, melhor["run_id"]
 
 
 # ── entrypoint ───────────────────────────────────────────────────
@@ -582,4 +631,4 @@ if __name__ == "__main__":
     p = build_parser("Avaliação comparativa e promoção de modelos champion/challenger")
     args, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
-    avaliar(spark, args, args.lr_run_id, args.lgbm_run_id)
+    avaliar(spark, args)

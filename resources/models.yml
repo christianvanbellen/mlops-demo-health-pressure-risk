@@ -1,0 +1,15 @@
+resources:
+  registered_models:
+    pressure_risk_classifier:
+      name: pressure_risk_classifier
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      comment: >
+        Modelo de classificação binária para prever risco de pressão assistencial
+        respiratória por município × semana epidemiológica (t+1).
+
+      grants:
+        # Service principal de CI/CD — precisa de MANAGE para setar aliases
+        - principal: d2d052ed-c90e-4b64-b482-c99c6322012e
+          privileges:
+            - ALL_PRIVILEGES
