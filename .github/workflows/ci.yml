@@ -87,8 +87,15 @@ jobs:
         run: |
           WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
+          echo "--- auth describe (antes do cd /tmp) ---"
+          databricks auth describe 2>&1 || true
+          echo "--- pwd e ls bundle ---"
+          pwd
+          ls databricks.yml 2>/dev/null && echo "bundle encontrado" || echo "bundle ausente"
           echo "Uploading $WHL_NAME → dev..."
           cd /tmp
+          echo "--- auth describe (após cd /tmp) ---"
+          databricks auth describe 2>&1 || true
           databricks fs cp \
             "$GITHUB_WORKSPACE/$WHL" \
             "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
