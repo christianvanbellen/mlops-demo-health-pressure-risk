@@ -9,35 +9,37 @@ variables:
 
   # tabelas bronze
   table_bronze_srag:
-    default: ds_dev_db.dev_christian_van_bellen.bronze_srag
+    default: ${var.catalog}.${var.schema}.bronze_srag
   table_bronze_hospitais_leitos:
-    default: ds_dev_db.dev_christian_van_bellen.bronze_hospitais_leitos
+    default: ${var.catalog}.${var.schema}.bronze_hospitais_leitos
   table_bronze_cnes:
-    default: ds_dev_db.dev_christian_van_bellen.bronze_cnes_estabelecimentos
+    default: ${var.catalog}.${var.schema}.bronze_cnes_estabelecimentos
 
   # tabelas silver
   table_silver_srag:
-    default: ds_dev_db.dev_christian_van_bellen.silver_srag_municipio_semana
+    default: ${var.catalog}.${var.schema}.silver_srag_municipio_semana
   table_silver_capacity:
-    default: ds_dev_db.dev_christian_van_bellen.silver_capacity_municipio_mes
+    default: ${var.catalog}.${var.schema}.silver_capacity_municipio_mes
 
   # tabelas gold
   table_gold_features:
-    default: ds_dev_db.dev_christian_van_bellen.gold_pressure_features
+    default: ${var.catalog}.${var.schema}.gold_pressure_features
   table_gold_scoring:
-    default: ds_dev_db.dev_christian_van_bellen.gold_pressure_scoring
+    default: ${var.catalog}.${var.schema}.gold_pressure_scoring
   table_gold_monitor:
-    default: ds_dev_db.dev_christian_van_bellen.monitoring_performance
+    default: ${var.catalog}.${var.schema}.monitoring_performance
 
-  # volume e mlflow
+  # volumes e mlflow
   landing_path:
-    default: /Volumes/ds_dev_db/dev_christian_van_bellen/landing
+    default: /Volumes/${var.catalog}/${var.schema}/landing
+  wheels_volume:
+    default: /Volumes/${var.catalog}/${var.schema}/wheels
   mlflow_experiment:
     default: "/Shared/mlops_workshop/health-pressure-risk/pressure-risk-baseline-lr"
 
   # model registry
   model_name:
-    default: ds_dev_db.dev_christian_van_bellen.pressure_risk_classifier
+    default: ${var.catalog}.${var.schema}.pressure_risk_classifier
   retrain_job_name:
     default: job_health_pressure_retrain
 
@@ -81,13 +83,21 @@ targets:
       catalog: ds_dev_db
       schema:  dev_christian_van_bellen
 
+  qa:
+    mode: development
+    workspace:
+      host: https://dbc-bacd151e-e2f8.cloud.databricks.com
+    variables:
+      catalog: ds_qa_db
+      schema:  mlops_demo_health_pressure_risk
+
   prod:
     mode: production
     workspace:
       host: https://dbc-bacd151e-e2f8.cloud.databricks.com
     variables:
-      catalog: ds_dev_db
-      schema:  dev_christian_van_bellen
+      catalog: ds_prod_db
+      schema:  mlops_demo_health_pressure_risk
 
 include:
   - resources/*.yml

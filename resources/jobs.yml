@@ -53,7 +53,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -80,7 +80,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -106,7 +106,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -131,7 +131,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -161,7 +161,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -192,7 +192,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -225,7 +225,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -256,7 +256,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -289,7 +289,7 @@ resources:
           job_cluster_key: weekly_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -366,7 +366,7 @@ resources:
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -406,7 +406,7 @@ resources:
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
@@ -442,7 +442,7 @@ resources:
           job_cluster_key: retrain_ml_cluster
           # existing_cluster_id: "0319-174645-eah19iqa"
           libraries:
-            - whl: /Volumes/ds_dev_db/dev_christian_van_bellen/wheels/health_pressure_risk-0.1.0-py3-none-any.whl
+            - whl: ${var.wheels_volume}/health_pressure_risk-0.1.0-py3-none-any.whl
             - pypi:
                 package: "databricks-labs-dqx>=0.13.0,<0.14.0"
             - pypi:
