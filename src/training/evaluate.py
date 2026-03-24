@@ -41,11 +41,11 @@ def _champion_existe(model_name: str) -> bool:
     """Retorna True se o alias @champion está atribuído no registry."""
     client = MlflowClient()
     try:
-        mv = client.get_registered_model_alias(model_name, "champion")
+        mv = client.get_model_version_by_alias(model_name, "champion")
         print(f"  @champion encontrado → versão {mv.version} (run_id={mv.run_id[:8]}...)")
         return True
     except Exception as e:
-        print(f"  @champion não encontrado ou erro ao consultar: {e}")
+        print(f"  @champion não encontrado: {e}")
         return False
 
 
