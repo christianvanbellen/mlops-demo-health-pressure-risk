@@ -44,11 +44,12 @@ jobs:
         env:
           PYTHONPATH: src
 
-  # ── Job 2: Build wheel ────────────────────────────────
+  # ── Job 2: Build wheel + upload prod ─────────────────
   build-wheel:
-    name: Build Wheel
+    name: Build and Publish Wheel (prod)
     runs-on: ubuntu-latest
     needs: lint-and-test
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,28 +67,14 @@ jobs:
       - name: Build wheel
         run: uv build --wheel
 
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel
-          path: dist/*.whl
-          retention-days: 1
-
-  # ── Job 3: Upload wheel → prod ────────────────────────
-  upload-wheel-prod:
-    name: Upload Wheel (prod)
-    runs-on: ubuntu-latest
-    needs: build-wheel
-    environment: production
-    steps:
-      - name: Download wheel artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: wheel
-          path: dist/
-
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v0.295.0
+
+      - name: Configure Databricks auth
+        run: |
+          echo "DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_ID=${{ vars.DATABRICKS_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_SECRET=${{ secrets.DATABRICKS_CLIENT_SECRET }}" >> $GITHUB_ENV
 
       - name: Upload wheel to prod Volume
         env:
@@ -96,12 +83,12 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_AUTH_TYPE: oauth-m2m
         run: |
-          WHL=$(ls dist/*.whl | head -1)
+          WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME → prod..."
           cd /tmp
           databricks fs cp \
-            "$GITHUB_WORKSPACE/dist/$WHL_NAME" \
+            "$GITHUB_WORKSPACE/$WHL" \
             "dbfs:/Volumes/ds_prod_db/mlops_demo_health_pressure_risk/wheels/$WHL_NAME" \
             --overwrite
           echo "Upload prod concluído"

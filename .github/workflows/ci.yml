@@ -47,9 +47,9 @@ jobs:
         env:
           PYTHONPATH: src
 
-  # ── Job 2: Build wheel ────────────────────────────────
+  # ── Job 2: Build wheel + upload dev ───────────────────
   build-wheel:
-    name: Build Wheel
+    name: Build and Publish Wheel (dev)
     runs-on: ubuntu-latest
     needs: lint-and-test
     steps:
@@ -69,27 +69,14 @@ jobs:
       - name: Build wheel
         run: uv build --wheel
 
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel
-          path: dist/*.whl
-          retention-days: 1
-
-  # ── Job 3: Upload wheel → dev (sempre) ───────────────
-  upload-wheel-dev:
-    name: Upload Wheel (dev)
-    runs-on: ubuntu-latest
-    needs: build-wheel
-    steps:
-      - name: Download wheel artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: wheel
-          path: dist/
-
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v0.295.0
+
+      - name: Configure Databricks auth
+        run: |
+          echo "DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_ID=${{ vars.DATABRICKS_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_SECRET=${{ secrets.DATABRICKS_CLIENT_SECRET }}" >> $GITHUB_ENV
 
       - name: Upload wheel to dev Volume
         env:
@@ -98,17 +85,24 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_AUTH_TYPE: oauth-m2m
         run: |
-          WHL=$(ls dist/*.whl | head -1)
+          WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME → dev..."
           cd /tmp
           databricks fs cp \
-            "$GITHUB_WORKSPACE/dist/$WHL_NAME" \
+            "$GITHUB_WORKSPACE/$WHL" \
             "dbfs:/Volumes/ds_dev_db/dev_christian_van_bellen/wheels/$WHL_NAME" \
             --overwrite
           echo "Upload dev concluído"
 
-  # ── Job 4: Validate bundle dev (sempre) ──────────────
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+          retention-days: 1
+
+  # ── Job 3: Validate bundle dev (sempre) ──────────────
   dab-validate-dev:
     name: Validate Bundle (dev)
     runs-on: ubuntu-latest
@@ -136,6 +130,9 @@ jobs:
     needs: build-wheel
     if: github.event_name == 'pull_request'
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download wheel artifact
         uses: actions/download-artifact@v4
         with:
@@ -145,6 +142,12 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@v0.295.0
 
+      - name: Configure Databricks auth
+        run: |
+          echo "DATABRICKS_HOST=${{ vars.DATABRICKS_HOST }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_ID=${{ vars.DATABRICKS_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "DATABRICKS_CLIENT_SECRET=${{ secrets.DATABRICKS_CLIENT_SECRET }}" >> $GITHUB_ENV
+
       - name: Upload wheel to qa Volume
         env:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
@@ -152,12 +155,12 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DATABRICKS_AUTH_TYPE: oauth-m2m
         run: |
-          WHL=$(ls dist/*.whl | head -1)
+          WHL=$(ls dist/health_pressure_risk-*.whl | head -1)
           WHL_NAME=$(basename "$WHL")
           echo "Uploading $WHL_NAME → qa..."
           cd /tmp
           databricks fs cp \
-            "$GITHUB_WORKSPACE/dist/$WHL_NAME" \
+            "$GITHUB_WORKSPACE/$WHL" \
             "dbfs:/Volumes/ds_qa_db/mlops_demo_health_pressure_risk/wheels/$WHL_NAME" \
             --overwrite
           echo "Upload qa concluído"
@@ -185,7 +188,7 @@ jobs:
   dab-deploy-dev:
     name: Deploy Bundle (dev)
     runs-on: ubuntu-latest
-    needs: [upload-wheel-dev, dab-validate-dev]
+    needs: [build-wheel, dab-validate-dev]
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
