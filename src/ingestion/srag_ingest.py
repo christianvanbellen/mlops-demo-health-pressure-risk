@@ -2,6 +2,7 @@
 # Ingestão Bronze — SRAG / SIVEP-Gripe
 # Fonte: https://dadosabertos.saude.gov.br/dataset/srag-2019-a-2026
 
+import os
 import re
 from datetime import datetime
 
@@ -171,11 +172,13 @@ def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
     spark.sql(f"CREATE TABLE IF NOT EXISTS {table_bronze_srag} USING DELTA")
 
     for ano, config in ANOS.items():
-        if apenas_live and not config["is_live"]:
-            print(f"\n── {ano}: pulando (congelado) ──")
+        fmt = config["formato"]
+        caminho = f"{landing_path}/srag_{ano}.{fmt}"
+
+        if os.path.exists(caminho):
+            print(f"\n── {ano}: já existe no landing, pulando ──")
             continue
 
-        fmt = config["formato"]
         url = urls_disponiveis.get(ano, {}).get(fmt)
 
         if not url:
