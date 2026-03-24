@@ -175,8 +175,8 @@ def gravar_bronze(spark: SparkSession, args, apenas_live: bool = False):
         fmt = config["formato"]
         caminho = f"{landing_path}/srag_{ano}.{fmt}"
 
-        if os.path.exists(caminho):
-            print(f"\n── {ano}: já existe no landing, pulando ──")
+        if not config["is_live"] and os.path.exists(caminho):
+            print(f"\n── {ano}: congelado e já existe no landing, pulando ──")
             continue
 
         url = urls_disponiveis.get(ano, {}).get(fmt)
